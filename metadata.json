@@ -1,0 +1,6 @@
+{
+  "name": "OpenCode Mobile",
+  "description": "Mobile control dashboard and service for local OpenCode agent runner.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
