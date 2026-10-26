@@ -11,6 +11,7 @@ captures/
 # Keystores & secrets
 *.keystore
 *.jks
+!app/keystore/opencode-release.jks
 *.apk
 *.aab
 .env
