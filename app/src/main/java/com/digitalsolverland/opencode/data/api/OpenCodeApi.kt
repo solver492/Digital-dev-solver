@@ -58,7 +58,10 @@ interface OpenCodeApi {
     ): Response<Unit>
 
     @POST("api/session/{id}/compact")
-    suspend fun compact(@Path("id") id: String): Response<Unit>
+    suspend fun compact(
+        @Path("id") id: String,
+        @Body body: EmptyRequest = EmptyRequest(),
+    ): Response<Unit>
 
     // ---- Catalog -----------------------------------------------------
     @GET("api/model")

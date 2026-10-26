@@ -229,15 +229,20 @@ data class CreateSessionRequest(
     val model: ModelRef? = null,
 )
 
-@Serializable
-data class PromptInput(val text: String)
-
+/**
+ * Corps attendu par POST /api/session/{id}/prompt en API v2 :
+ * le texte est à la racine du payload (`{"text": "..."}`).
+ */
 @Serializable
 data class PromptRequest(
-    val prompt: PromptInput,
+    val text: String,
     val delivery: String = "queue",
     val resume: Boolean? = null,
 )
+
+/** Corps vide exigé par certaines routes POST (compact, …). */
+@Serializable
+class EmptyRequest
 
 @Serializable
 data class SwitchModelRequest(val model: ModelRef)

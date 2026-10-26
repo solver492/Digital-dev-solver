@@ -283,7 +283,7 @@ class OpenCodeRepository {
             val known = _messages.value.map { it.id }.toHashSet()
             val response = requireApi().prompt(
                 session.id,
-                PromptRequest(prompt = PromptInput(text), delivery = "queue"),
+                PromptRequest(text = text, delivery = "queue"),
             )
             if (!response.isSuccessful) {
                 _error.value = httpMessage(response, "Envoi refusé")
