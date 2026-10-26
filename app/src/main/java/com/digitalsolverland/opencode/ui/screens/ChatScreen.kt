@@ -1,15 +1,28 @@
 package com.digitalsolverland.opencode.ui.screens
 
+import android.Manifest
+import android.content.Context
+import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.net.Uri
+import android.os.Build
+import android.provider.MediaStore
+import android.util.Base64
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
@@ -21,14 +34,20 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.AttachFile
+import androidx.compose.material.icons.filled.AudioFile
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Build
+import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SmartToy
 import androidx.compose.material.icons.filled.Stop
@@ -38,6 +57,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -45,18 +67,28 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import com.digitalsolverland.opencode.data.model.AgentInfo
 import com.digitalsolverland.opencode.data.model.MessageContent
 import com.digitalsolverland.opencode.data.model.ModelInfo
 import com.digitalsolverland.opencode.data.model.ModelRef
+import com.digitalsolverland.opencode.data.model.PromptPart
 import com.digitalsolverland.opencode.data.model.SessionInfo
 import com.digitalsolverland.opencode.data.model.SessionMessage
 import com.digitalsolverland.opencode.data.model.ToolState
 import com.digitalsolverland.opencode.ui.components.MarkdownText
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import java.io.ByteArrayOutputStream
+import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 /* --------------------------- Chat entries -------------------------- */
 
@@ -142,6 +174,14 @@ private fun ModelRef.label(): String = id.substringAfterLast('/')
 
 /* ----------------------------- Screen ------------------------------ */
 
+private data class PendingAttachment(
+    val uri: Uri,
+    val name: String,
+    val mime: String,
+    val data: String,
+    val preview: Bitmap?,
+)
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChatScreen(
@@ -154,7 +194,7 @@ fun ChatScreen(
     isWorking: Boolean,
     activity: String?,
     onBack: () -> Unit,
-    onSendMessage: (String) -> Unit,
+    onSendMessage: (String, List<PromptPart>?) -> Unit,
     onStop: () -> Unit,
     onSelectModel: (ModelInfo) -> Unit,
     onSelectAgent: (AgentInfo?) -> Unit,
@@ -178,6 +218,76 @@ fun ChatScreen(
         if (entries.isNotEmpty()) {
             scope.launch { listState.animateScrollToItem(entries.lastIndex) }
         }
+    }
+
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var pendingAttachments by remember { mutableStateOf<List<PendingAttachment>>(emptyList()) }
+    var showAttachMenu by remember { mutableStateOf(false) }
+    var cameraUri by remember { mutableStateOf<Uri?>(null) }
+
+    fun readUri(uri: Uri): PendingAttachment? {
+        return try {
+            val contentResolver = context.contentResolver
+            val mime = contentResolver.getType(uri) ?: "application/octet-stream"
+            val name = uri.lastPathSegment ?: "file"
+            val bytes = contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: return null
+            val preview = if (mime.startsWith("image/")) {
+                runCatching {
+                    val opts = BitmapFactory.Options().apply { inSampleSize = 2 }
+                    BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts)
+                }.getOrNull()
+            } else null
+            val compressed = if (mime.startsWith("image/") && preview != null) {
+                val out = ByteArrayOutputStream()
+                preview.compress(Bitmap.CompressFormat.JPEG, 80, out)
+                out.toByteArray()
+            } else bytes
+            PendingAttachment(
+                uri = uri,
+                name = name,
+                mime = if (mime.startsWith("image/") && compressed !== bytes) "image/jpeg" else mime,
+                data = Base64.encodeToString(compressed, Base64.NO_WRAP),
+                preview = if (mime.startsWith("image/")) preview else null,
+            )
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null) {
+            readUri(uri)?.let { att ->
+                pendingAttachments = pendingAttachments + att
+            }
+        }
+    }
+    val imagePickerMultiple = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        uris.forEach { uri ->
+            readUri(uri)?.let { att ->
+                pendingAttachments = pendingAttachments + att
+            }
+        }
+    }
+    val audioPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null) {
+            readUri(uri)?.let { att ->
+                pendingAttachments = pendingAttachments + att
+            }
+        }
+    }
+    val cameraLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { success ->
+        if (success && cameraUri != null) {
+            readUri(cameraUri!!)?.let { att ->
+                pendingAttachments = pendingAttachments + att
+            }
+        }
+    }
+
+    fun createImageUri(): Uri {
+        val timeStamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
+        val imageFile = File.createTempFile("IMG_${timeStamp}_", ".jpg", context.cacheDir)
+        return FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", imageFile)
     }
 
     Scaffold(
@@ -243,24 +353,141 @@ fun ChatScreen(
             )
         },
         bottomBar = {
-            ChatComposer(
-                value = inputText,
-                onValueChange = { inputText = it },
-                isWorking = isWorking,
-                modelLabel = activeModel?.label(),
-                agentLabel = activeAgent,
-                onModelClick = { showModelSheet = true },
-                onAgentClick = { showAgentSheet = true },
-                onSend = {
-                    val text = inputText.trim()
-                    if (text.isNotEmpty() && !isWorking) {
-                        onSendMessage(text)
-                        inputText = ""
-                        keyboard?.hide()
+            Column {
+                if (pendingAttachments.isNotEmpty()) {
+                    LazyRow(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(MaterialTheme.colorScheme.surface)
+                            .padding(horizontal = 12.dp, vertical = 6.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        items(pendingAttachments) { att ->
+                            Box {
+                                if (att.preview != null) {
+                                    Image(
+                                        bitmap = att.preview.asImageBitmap(),
+                                        contentDescription = att.name,
+                                        modifier = Modifier
+                                            .size(64.dp)
+                                            .clip(RoundedCornerShape(10.dp)),
+                                        contentScale = ContentScale.Crop,
+                                    )
+                                } else {
+                                    Surface(
+                                        modifier = Modifier.size(64.dp),
+                                        shape = RoundedCornerShape(10.dp),
+                                        color = MaterialTheme.colorScheme.surfaceVariant,
+                                    ) {
+                                        Column(
+                                            modifier = Modifier.fillMaxSize(),
+                                            horizontalAlignment = Alignment.CenterHorizontally,
+                                            verticalArrangement = Arrangement.Center,
+                                        ) {
+                                            Icon(
+                                                if (att.mime.startsWith("audio/")) Icons.Default.MusicNote else Icons.Default.AudioFile,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.primary,
+                                            )
+                                            Text(
+                                                att.name.takeLast(8),
+                                                style = MaterialTheme.typography.labelSmall,
+                                                maxLines = 1,
+                                            )
+                                        }
+                                    }
+                                }
+                                IconButton(
+                                    onClick = { pendingAttachments = pendingAttachments - att },
+                                    modifier = Modifier
+                                        .align(Alignment.TopEnd)
+                                        .size(20.dp),
+                                ) {
+                                    Icon(
+                                        Icons.Default.Close,
+                                        contentDescription = "Retirer",
+                                        modifier = Modifier.size(14.dp),
+                                    )
+                                }
+                            }
+                        }
                     }
-                },
-                onStop = onStop,
-            )
+                }
+                ChatComposer(
+                    value = inputText,
+                    onValueChange = { inputText = it },
+                    isWorking = isWorking,
+                    modelLabel = activeModel?.label(),
+                    agentLabel = activeAgent,
+                    onModelClick = { showModelSheet = true },
+                    onAgentClick = { showAgentSheet = true },
+                    onAttachClick = { showAttachMenu = true },
+                    onSend = {
+                        val text = inputText.trim()
+                        if ((text.isNotEmpty() || pendingAttachments.isNotEmpty()) && !isWorking) {
+                            val parts = pendingAttachments.map { att ->
+                                PromptPart(
+                                    type = if (att.mime.startsWith("image/")) "image" else if (att.mime.startsWith("audio/")) "audio" else "file",
+                                    mime = att.mime,
+                                    url = "data:${att.mime};base64,${att.data}",
+                                    filename = att.name,
+                                    data = att.data,
+                                )
+                            }
+                            onSendMessage(text, if (parts.isNotEmpty()) parts else null)
+                            inputText = ""
+                            pendingAttachments = emptyList()
+                            keyboard?.hide()
+                        }
+                    },
+                    onStop = onStop,
+                )
+                if (showAttachMenu) {
+                    ModalBottomSheet(onDismissRequest = { showAttachMenu = false }) {
+                        Column(modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)) {
+                            Text(
+                                "Ajouter une pièce jointe",
+                                style = MaterialTheme.typography.titleMedium,
+                                modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+                            )
+                            ListItem(
+                                headlineContent = { Text("Galerie (images)") },
+                                leadingContent = { Icon(Icons.Default.Image, null) },
+                                modifier = Modifier.clickable {
+                                    showAttachMenu = false
+                                    imagePicker.launch("image/*")
+                                },
+                            )
+                            ListItem(
+                                headlineContent = { Text("Prendre une photo") },
+                                leadingContent = { Icon(Icons.Default.CameraAlt, null) },
+                                modifier = Modifier.clickable {
+                                    showAttachMenu = false
+                                    val uri = createImageUri()
+                                    cameraUri = uri
+                                    cameraLauncher.launch(uri)
+                                },
+                            )
+                            ListItem(
+                                headlineContent = { Text("Fichiers images") },
+                                leadingContent = { Icon(Icons.Default.AttachFile, null) },
+                                modifier = Modifier.clickable {
+                                    showAttachMenu = false
+                                    imagePickerMultiple.launch(arrayOf("image/*"))
+                                },
+                            )
+                            ListItem(
+                                headlineContent = { Text("Audio") },
+                                leadingContent = { Icon(Icons.Default.MusicNote, null) },
+                                modifier = Modifier.clickable {
+                                    showAttachMenu = false
+                                    audioPicker.launch("audio/*")
+                                },
+                            )
+                        }
+                    }
+                }
+            }
         },
     ) { padding ->
         if (entries.isEmpty()) {
@@ -665,6 +892,7 @@ private fun ChatComposer(
     agentLabel: String?,
     onModelClick: () -> Unit,
     onAgentClick: () -> Unit,
+    onAttachClick: () -> Unit = {},
     onSend: () -> Unit,
     onStop: () -> Unit,
 ) {
@@ -695,10 +923,15 @@ private fun ChatComposer(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(start = 12.dp, end = 12.dp, bottom = 10.dp),
+                    .padding(start = 8.dp, end = 12.dp, bottom = 10.dp),
                 verticalAlignment = Alignment.Bottom,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
+                if (!isWorking) {
+                    IconButton(onClick = onAttachClick) {
+                        Icon(Icons.Default.AttachFile, contentDescription = "Joindre un fichier")
+                    }
+                }
                 OutlinedTextField(
                     value = value,
                     onValueChange = onValueChange,
