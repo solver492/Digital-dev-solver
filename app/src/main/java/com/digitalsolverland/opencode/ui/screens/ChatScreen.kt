@@ -86,7 +86,9 @@ private fun buildEntries(messages: List<SessionMessage>): List<ChatEntry> {
                 val previous = entries.lastOrNull() as? ChatEntry.Assistant
                 val error = jsonMessage(message.error)
                 val running = message.time?.completed == null && error == null
-                if (previous != null && previous.error == null) {
+                if (previous != null && previous.error == null &&
+                    previous.contents.size <= 30
+                ) {
                     entries[entries.lastIndex] = previous.copy(
                         contents = previous.contents + message.content,
                         error = error,
@@ -101,12 +103,8 @@ private fun buildEntries(messages: List<SessionMessage>): List<ChatEntry> {
                     )
                 }
             }
-            "system", "synthetic" -> {
-                val text = message.text.orEmpty()
-                if (text.isNotBlank() && text.length < 400) {
-                    entries += ChatEntry.Notice(message.id, text, warn = false)
-                }
-            }
+            // "system" / "synthetic" are internal prompt material: never shown.
+            "system", "synthetic" -> Unit
             "compaction" -> entries += ChatEntry.Notice(
                 message.id,
                 message.summary ?: "Contexte compacté",
@@ -449,10 +447,10 @@ private fun ToolRow(part: MessageContent) {
     val state = part.state
     val status = state?.status ?: "pending"
     var expanded by remember { mutableStateOf(false) }
-    val summary = when (status) {
-        "completed" -> state?.title ?: "Terminé"
+    val summary = toolSummary(state) ?: when (status) {
+        "completed" -> "Terminé"
         "error" -> jsonMessage(state?.error) ?: "Échec"
-        "running" -> state?.title ?: "En cours…"
+        "running" -> "En cours…"
         else -> "En attente…"
     }
     val tint = when (status) {
@@ -535,6 +533,19 @@ private fun ToolRow(part: MessageContent) {
             }
         }
     }
+}
+
+/** Pulls the most meaningful field out of a tool call's input object. */
+private fun toolSummary(state: ToolState?): String? {
+    val input = state?.input as? JsonObject ?: return state?.title
+    val keys = listOf(
+        "command", "filePath", "path", "pattern", "query", "url", "description", "prompt", "name",
+    )
+    for (key in keys) {
+        val value = input[key]?.let { runCatching { it.jsonPrimitive.content }.getOrNull() }
+        if (!value.isNullOrBlank()) return value.lineSequence().first().take(120)
+    }
+    return state?.title
 }
 
 private fun toolOutput(state: ToolState?): String? {
