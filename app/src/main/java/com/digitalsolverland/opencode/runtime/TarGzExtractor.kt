@@ -66,7 +66,8 @@ class TarGzExtractor(
             longName = null
             longLink = null
 
-            val clean = sanitize(rawName) ?: run {
+            val clean = sanitize(rawName)
+            if (clean == null) {
                 skip(input, size)
                 skipPadding(input, size)
                 continue

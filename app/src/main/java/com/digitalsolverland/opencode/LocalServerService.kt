@@ -51,6 +51,10 @@ class LocalServerService : Service() {
             ACTION_STATUS -> {
                 LocalServer.refresh(this)
             }
+            ACTION_INSTALL -> {
+                acquireWakeLock()
+                LocalServer.install(this)
+            }
             else -> {
                 acquireWakeLock()
                 LocalServer.start(this)
@@ -146,6 +150,7 @@ class LocalServerService : Service() {
         const val ACTION_START = "com.digitalsolverland.opencode.local.START"
         const val ACTION_STOP = "com.digitalsolverland.opencode.local.STOP"
         const val ACTION_STATUS = "com.digitalsolverland.opencode.local.STATUS"
+        const val ACTION_INSTALL = "com.digitalsolverland.opencode.local.INSTALL"
         private const val CHANNEL_ID = "opencode_local_server"
         private const val NOTIF_ID = 4343
 

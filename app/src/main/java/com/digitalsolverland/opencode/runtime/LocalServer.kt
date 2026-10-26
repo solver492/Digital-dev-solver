@@ -154,6 +154,8 @@ object LocalServer {
                 pb.environment().apply {
                     put("PROOT_TMP_DIR", RuntimePaths(app).tmp.absolutePath)
                     put("PROOT_LOADER", RuntimePaths(app).loader().absolutePath)
+                    // Certains noyaux Android refusent l'accélération seccomp de proot.
+                    put("PROOT_NO_SECCOMP", "1")
                     put("HOME", RuntimePaths(app).base.absolutePath)
                     put("TMPDIR", RuntimePaths(app).tmp.absolutePath)
                     put("PATH", "/system/bin:/system/xbin")
@@ -237,6 +239,7 @@ object LocalServer {
                 pb.environment().apply {
                     put("PROOT_TMP_DIR", RuntimePaths(app).tmp.absolutePath)
                     put("PROOT_LOADER", RuntimePaths(app).loader().absolutePath)
+                    put("PROOT_NO_SECCOMP", "1")
                     put("HOME", RuntimePaths(app).base.absolutePath)
                     put("TMPDIR", RuntimePaths(app).tmp.absolutePath)
                 }
@@ -288,9 +291,12 @@ object LocalServer {
             "-b", "${paths.tmp.absolutePath}:/tmp",
             "-b", "${paths.shm.absolutePath}:/dev/shm",
             "-b", "${paths.workspace.absolutePath}:/root/workspace",
-            "-w", "/root",
+            "-w", "/root/workspace",
             "/usr/bin/env", "-i",
             "HOME=/root",
+            "USER=root",
+            "LOGNAME=root",
+            "TMPDIR=/tmp",
             "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
             "TERM=xterm-256color",
             "LANG=C.UTF-8",

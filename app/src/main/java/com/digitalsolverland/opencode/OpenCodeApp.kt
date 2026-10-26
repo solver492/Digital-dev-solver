@@ -71,6 +71,17 @@ fun OpenCodeApp(viewModel: OpenCodeViewModel = viewModel()) {
     val localPort by LocalServer.port.collectAsState()
     var autoConnectedPort by remember { mutableStateOf(-1) }
 
+    // En mode autonome : relance le serveur local au démarrage de l'app s'il est installé.
+    LaunchedEffect(Unit) {
+        LocalServer.refresh(context)
+        if (settings.localMode && LocalServer.installed.value) {
+            ContextCompat.startForegroundService(
+                context,
+                LocalServerService.intent(context, LocalServerService.ACTION_START),
+            )
+        }
+    }
+
     LaunchedEffect(localPhase, localPort) {
         if (localPhase == LocalPhase.RUNNING && settings.localMode && autoConnectedPort != localPort) {
             autoConnectedPort = localPort
@@ -111,6 +122,9 @@ fun OpenCodeApp(viewModel: OpenCodeViewModel = viewModel()) {
                             onRefresh = { viewModel.refresh() },
                             onSettingsClick = {
                                 navController.navigate(ROUTE_SETTINGS) { launchSingleTop = true }
+                            },
+                            onLocalServerClick = {
+                                navController.navigate(ROUTE_LOCAL) { launchSingleTop = true }
                             },
                         )
                     }
@@ -178,7 +192,12 @@ fun OpenCodeApp(viewModel: OpenCodeViewModel = viewModel()) {
                     composable(ROUTE_LOCAL) {
                         LocalServerScreen(
                             onBack = { navController.popBackStack() },
-                            onInstall = { LocalServer.install(context) },
+                            onInstall = {
+                                ContextCompat.startForegroundService(
+                                    context,
+                                    LocalServerService.intent(context, LocalServerService.ACTION_INSTALL),
+                                )
+                            },
                             onStart = {
                                 ContextCompat.startForegroundService(
                                     context,

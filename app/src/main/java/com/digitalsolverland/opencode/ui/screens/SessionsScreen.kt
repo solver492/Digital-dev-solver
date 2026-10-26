@@ -37,6 +37,7 @@ fun SessionsScreen(
     onDeleteSession: (SessionInfo) -> Unit,
     onRefresh: () -> Unit,
     onSettingsClick: () -> Unit,
+    onLocalServerClick: () -> Unit,
 ) {
     var query by remember { mutableStateOf("") }
     var pendingDelete by remember { mutableStateOf<SessionInfo?>(null) }
@@ -122,6 +123,7 @@ fun SessionsScreen(
                 DisconnectedHero(
                     isConnecting = isConnecting,
                     onConnect = onSettingsClick,
+                    onLocalServer = onLocalServerClick,
                 )
             } else {
                 if (sessions.size > 4) {
@@ -211,7 +213,11 @@ fun SessionsScreen(
 }
 
 @Composable
-private fun DisconnectedHero(isConnecting: Boolean, onConnect: () -> Unit) {
+private fun DisconnectedHero(
+    isConnecting: Boolean,
+    onConnect: () -> Unit,
+    onLocalServer: () -> Unit,
+) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -258,6 +264,14 @@ private fun DisconnectedHero(isConnecting: Boolean, onConnect: () -> Unit) {
                 Spacer(Modifier.width(8.dp))
             }
             Text(if (isConnecting) "Connexion…" else "Configurer la connexion")
+        }
+        Spacer(Modifier.height(10.dp))
+        OutlinedButton(
+            onClick = onLocalServer,
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(12.dp),
+        ) {
+            Text("Utiliser ce téléphone (autonome)")
         }
     }
 }
