@@ -13,8 +13,8 @@ android {
         applicationId = "com.digitalsolverland.opencode"
         minSdk = 26
         targetSdk = 28
-        versionCode = 6
-        versionName = "2.2.2"
+        versionCode = 7
+        versionName = "2.2.3"
     }
 
     /**
