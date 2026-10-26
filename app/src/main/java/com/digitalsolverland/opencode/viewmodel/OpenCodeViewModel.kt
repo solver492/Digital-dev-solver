@@ -173,20 +173,20 @@ class OpenCodeViewModel(application: Application) : AndroidViewModel(application
 
     /* ----------------------------- Chat ------------------------------ */
 
-    fun sendMessage(text: String) {
+    fun sendMessage(text: String, parts: List<com.digitalsolverland.opencode.data.model.PromptPart>? = null) {
         val body = text.trim()
-        if (body.isEmpty() || isWorking.value) return
+        if ((body.isEmpty() && parts.isNullOrEmpty()) || isWorking.value) return
         if (currentSession.value == null) {
             // No session yet (e.g. deep link): create one, then send.
             viewModelScope.launch {
                 val session = repository.createSession(_selectedModel.value, _selectedAgent.value)
                     ?: return@launch
-                repository.sendPrompt(body, _selectedModel.value, _selectedAgent.value)
+                repository.sendPrompt(body, _selectedModel.value, _selectedAgent.value, parts)
             }
             return
         }
         viewModelScope.launch {
-            repository.sendPrompt(body, _selectedModel.value, _selectedAgent.value)
+            repository.sendPrompt(body, _selectedModel.value, _selectedAgent.value, parts)
         }
     }
 
