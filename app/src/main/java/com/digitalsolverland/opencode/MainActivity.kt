@@ -26,23 +26,8 @@ class MainActivity : ComponentActivity() {
             notifPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
 
-        val settings = SecureSettings(this)
-
         setContent {
-            OpenCodeApp(
-                settings = settings,
-                onStart = {
-                    ContextCompat.startForegroundService(
-                        this, OpenCodeService.intent(this, OpenCodeService.ACTION_START)
-                    )
-                },
-                onStop = { startService(OpenCodeService.intent(this, OpenCodeService.ACTION_STOP)) },
-                onStatus = { startService(OpenCodeService.intent(this, OpenCodeService.ACTION_STATUS)) },
-                onSend = { text ->
-                    AgentBus.log("> $text")
-                    startService(OpenCodeService.intent(this, OpenCodeService.ACTION_SEND, text))
-                }
-            )
+            OpenCodeApp()
         }
     }
 }

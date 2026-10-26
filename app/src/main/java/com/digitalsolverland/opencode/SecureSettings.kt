@@ -9,7 +9,7 @@ class SecureSettings(context: Context) {
 
     private val prefs: SharedPreferences = EncryptedSharedPreferences.create(
         context.applicationContext,
-        "opencode_secure_prefs",
+        "opencode_secure_prefs_v2",
         MasterKey.Builder(context.applicationContext)
             .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
             .build(),
@@ -33,12 +33,22 @@ class SecureSettings(context: Context) {
         get() = prefs.getInt("port", 4096)
         set(v) = prefs.edit().putInt("port", v).apply()
 
-    /** Script d'entrée JS, relatif à filesDir (extrait depuis assets/opencode/). */
+    var serverUrl: String
+        get() = prefs.getString("server_url", "http://127.0.0.1:4096") ?: "http://127.0.0.1:4096"
+        set(v) = prefs.edit().putString("server_url", v).apply()
+
+    var defaultProvider: String
+        get() = prefs.getString("default_provider", "") ?: ""
+        set(v) = prefs.edit().putString("default_provider", v).apply()
+
+    var defaultModel: String
+        get() = prefs.getString("default_model", "") ?: ""
+        set(v) = prefs.edit().putString("default_model", v).apply()
+
     var entryScript: String
         get() = prefs.getString("entry", "opencode/cli.js") ?: "opencode/cli.js"
         set(v) = prefs.edit().putString("entry", v).apply()
 
-    /** Arguments passés au script. {PORT} est remplacé par le port configuré. */
     var extraArgs: String
         get() = prefs.getString("args", "serve --hostname 127.0.0.1 --port {PORT}")
             ?: "serve --hostname 127.0.0.1 --port {PORT}"
@@ -48,7 +58,6 @@ class SecureSettings(context: Context) {
         get() = prefs.getBoolean("autostart", false)
         set(v) = prefs.edit().putBoolean("autostart", v).apply()
 
-    /** Format : une action par ligne -> "Libellé::Prompt à envoyer". */
     var quickActionsRaw: String
         get() = prefs.getString("quick", DEFAULT_ACTIONS) ?: DEFAULT_ACTIONS
         set(v) = prefs.edit().putString("quick", v).apply()
