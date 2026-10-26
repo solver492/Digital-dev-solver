@@ -45,6 +45,20 @@ class SecureSettings(context: Context) {
 
     /* ---------------------- Embedded runtime ------------------------ */
 
+    /** Mot de passe du serveur OpenCode lancé sur le téléphone (généré une fois). */
+    var localPassword: String
+        get() = prefs.getString("local_password", "") ?: ""
+        set(v) = prefs.edit().putString("local_password", v).apply()
+
+    var localPort: Int
+        get() = prefs.getInt("local_port", 4096)
+        set(v) = prefs.edit().putInt("local_port", v).apply()
+
+    /** true = l'app se connecte automatiquement au serveur local quand il est prêt. */
+    var localMode: Boolean
+        get() = prefs.getBoolean("local_mode", false)
+        set(v) = prefs.edit().putBoolean("local_mode", v).apply()
+
     var openAiKey: String
         get() = prefs.getString("openai_key", "") ?: ""
         set(v) = prefs.edit().putString("openai_key", v).apply()

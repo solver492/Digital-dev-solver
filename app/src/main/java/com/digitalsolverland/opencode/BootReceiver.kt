@@ -10,7 +10,8 @@ class BootReceiver : BroadcastReceiver() {
         if (intent.action != Intent.ACTION_BOOT_COMPLETED) return
         if (SecureSettings(context).autoStartOnBoot) {
             ContextCompat.startForegroundService(
-                context, OpenCodeService.intent(context, OpenCodeService.ACTION_START)
+                context,
+                LocalServerService.intent(context, LocalServerService.ACTION_START),
             )
         }
     }

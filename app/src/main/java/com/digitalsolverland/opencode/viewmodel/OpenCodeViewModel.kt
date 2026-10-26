@@ -97,6 +97,12 @@ class OpenCodeViewModel(application: Application) : AndroidViewModel(application
         updateServerPassword(password)
     }
 
+    /** Connexion directe (ex. serveur local embarqué) sans passer par l'écran de réglages. */
+    fun connectTo(url: String, password: String, onResult: ((Boolean) -> Unit)? = null) {
+        saveConnection(url, password)
+        connect(onResult)
+    }
+
     fun refresh() {
         viewModelScope.launch { repository.refreshAll() }
     }

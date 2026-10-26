@@ -41,6 +41,8 @@ fun SettingsScreen(
     onSave: (String, String) -> Unit,
     onConnect: () -> Unit,
     onDisconnect: () -> Unit,
+    onOpenLocalServer: () -> Unit,
+    onOpenLogs: () -> Unit,
     onBack: () -> Unit,
 ) {
     var url by remember { mutableStateOf(serverUrl) }
@@ -74,6 +76,34 @@ fun SettingsScreen(
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             StatusCard(isConnected = isConnected, isConnecting = isConnecting, lastError = lastError)
+
+            SectionCard(title = "Où tourne le serveur ?") {
+                Text(
+                    "Trois façons d'utiliser OpenCode : directement sur ce téléphone, depuis votre ordinateur " +
+                        "en Wi-Fi, ou via un serveur distant.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Button(
+                    onClick = onOpenLocalServer,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                ) {
+                    Text("Sur ce téléphone (autonome)")
+                }
+                Text(
+                    "Aucun PC nécessaire : l'app installe une distribution Linux et lance OpenCode elle-même.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                OutlinedButton(
+                    onClick = onOpenLogs,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                ) {
+                    Text("Ouvrir le journal")
+                }
+            }
 
             SectionCard(title = "Serveur OpenCode") {
                 OutlinedTextField(
