@@ -229,13 +229,24 @@ data class CreateSessionRequest(
     val model: ModelRef? = null,
 )
 
+@Serializable
+data class PromptPart(
+    val type: String = "text",
+    val text: String? = null,
+    val mime: String? = null,
+    val url: String? = null,
+    val filename: String? = null,
+    val data: String? = null,
+)
+
 /**
- * Corps attendu par POST /api/session/{id}/prompt en API v2 :
- * le texte est à la racine du payload (`{"text": "..."}`).
+ * Corps attendu par POST /api/session/{id}/prompt en API v2.
+ * Supporte à la fois le format texte simple et les pièces jointes (images/audio/fichiers).
  */
 @Serializable
 data class PromptRequest(
-    val text: String,
+    val text: String? = null,
+    val parts: List<PromptPart>? = null,
     val delivery: String = "queue",
     val resume: Boolean? = null,
 )
