@@ -162,14 +162,17 @@ data class ModelInfo(
     val variants: List<ModelVariant> = emptyList(),
     val capabilities: ModelCapabilities? = null,
     val limit: ModelLimit? = null,
-    val cost: ModelCost? = null,
+    /** The API exposes a list of cost tiers (see /api/model). */
+    val cost: List<ModelCost> = emptyList(),
     val status: String = "active",
     val enabled: Boolean = true,
 ) {
     /** Stable id used by ModelRef. */
     val refId: String get() = if (id.isNotBlank()) id else (modelID ?: "")
     val label: String get() = name.ifBlank { refId }
-    val isFree: Boolean get() = (cost?.input ?: 0.0) <= 0.0 && (cost?.output ?: 0.0) <= 0.0
+    val isFree: Boolean
+        get() = cost.isEmpty() ||
+            cost.all { it.input <= 0.0 && it.output <= 0.0 }
 }
 
 @Serializable
