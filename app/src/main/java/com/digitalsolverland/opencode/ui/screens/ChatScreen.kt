@@ -28,6 +28,7 @@ import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Memory
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SmartToy
 import androidx.compose.material.icons.filled.Stop
@@ -158,10 +159,12 @@ fun ChatScreen(
     onSelectModel: (ModelInfo) -> Unit,
     onSelectAgent: (AgentInfo?) -> Unit,
     onOpenSettings: () -> Unit,
+    onCompact: () -> Unit = {},
     quickActions: List<Pair<String, String>> = emptyList(),
 ) {
     var inputText by remember { mutableStateOf("") }
     var showModelSheet by remember { mutableStateOf(false) }
+    var showMenu by remember { mutableStateOf(false) }
     var showAgentSheet by remember { mutableStateOf(false) }
     val entries = remember(messages) { buildEntries(messages) }
     val listState = rememberLazyListState()
@@ -207,8 +210,30 @@ fun ChatScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = onOpenSettings) {
-                        Icon(Icons.Default.Bolt, contentDescription = "Réglages")
+                    Box {
+                        IconButton(onClick = { showMenu = true }) {
+                            Icon(Icons.Default.MoreVert, contentDescription = "Plus")
+                        }
+                        DropdownMenu(
+                            expanded = showMenu,
+                            onDismissRequest = { showMenu = false },
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("Compacter le contexte") },
+                                enabled = !isWorking,
+                                onClick = {
+                                    showMenu = false
+                                    onCompact()
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Réglages") },
+                                onClick = {
+                                    showMenu = false
+                                    onOpenSettings()
+                                },
+                            )
+                        }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(

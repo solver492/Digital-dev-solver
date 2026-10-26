@@ -356,6 +356,24 @@ class OpenCodeRepository {
         null
     }
 
+    /** Asks the server to summarise and compact the session context. */
+    suspend fun compact(): Boolean = withContext(Dispatchers.IO) {
+        val session = _currentSession.value ?: return@withContext false
+        try {
+            val response = requireApi().compact(session.id)
+            if (!response.isSuccessful) {
+                _error.value = httpMessage(response, "Compactage impossible")
+                false
+            } else {
+                _error.value = null
+                true
+            }
+        } catch (e: Exception) {
+            _error.value = "Compactage impossible : ${e.message}"
+            false
+        }
+    }
+
     suspend fun interrupt() = withContext(Dispatchers.IO) {
         val session = _currentSession.value ?: return@withContext
         // Stop polling immediately for a snappy UI, then tell the server.

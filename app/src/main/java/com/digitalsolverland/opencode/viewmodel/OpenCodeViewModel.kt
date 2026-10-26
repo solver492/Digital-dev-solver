@@ -9,6 +9,7 @@ import com.digitalsolverland.opencode.data.model.ModelInfo
 import com.digitalsolverland.opencode.data.model.ModelRef
 import com.digitalsolverland.opencode.data.model.SessionInfo
 import com.digitalsolverland.opencode.data.repo.OpenCodeRepository
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -183,6 +184,11 @@ class OpenCodeViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
+    fun compact() {
+        if (isWorking.value) return
+        viewModelScope.launch { repository.compact() }
+    }
+
     fun stop() {
         viewModelScope.launch { repository.interrupt() }
     }
@@ -193,8 +199,11 @@ class OpenCodeViewModel(application: Application) : AndroidViewModel(application
 
     /* ---------------------------- Polling ---------------------------- */
 
+    private var refreshJob: Job? = null
+
     private fun startRefreshLoop() {
-        viewModelScope.launch {
+        if (refreshJob?.isActive == true) return
+        refreshJob = viewModelScope.launch {
             while (isConnected.value) {
                 kotlinx.coroutines.delay(if (isWorking.value) 4_000L else 15_000L)
                 if (!isConnected.value) break

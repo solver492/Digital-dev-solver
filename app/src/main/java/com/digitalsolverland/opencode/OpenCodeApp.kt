@@ -115,6 +115,7 @@ fun OpenCodeApp(viewModel: OpenCodeViewModel = viewModel()) {
                                 onOpenSettings = {
                                     navController.navigate(ROUTE_SETTINGS) { launchSingleTop = true }
                                 },
+                                onCompact = { viewModel.compact() },
                                 quickActions = viewModel.quickActions,
                             )
                         }
