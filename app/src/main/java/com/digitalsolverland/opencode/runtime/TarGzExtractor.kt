@@ -47,15 +47,18 @@ class TarGzExtractor(
                 }
                 longName = null
                 longLink = null
+                skipPadding(input, size)
                 continue
             }
 
             if (type == 'L') {
                 longName = String(readData(input, size), Charsets.UTF_8).trimEnd('\u0000', '\n')
+                skipPadding(input, size)
                 continue
             }
             if (type == 'K') {
                 longLink = String(readData(input, size), Charsets.UTF_8).trimEnd('\u0000', '\n')
+                skipPadding(input, size)
                 continue
             }
 
