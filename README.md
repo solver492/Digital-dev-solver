@@ -129,3 +129,13 @@ Prérequis : JDK 17, Android SDK 35.
 | `POST` | `/api/session/{id}/agent` | changement d'agent |
 | `GET` | `/api/session/active` | statut d'exécution |
 | `GET` | `/api/model`, `/api/agent` | catalogues |
+
+## Signature stable des APK
+
+Les APK sont signés avec la clé `app/keystore/opencode-release.jks`
+(alias `opencode`, mot de passe `opencode-mobile`). Elle est versionnée
+volontairement : sans elle, chaque build CI générait une clé de debug
+différente et Android refusait la mise à jour (« Application non installée »).
+
+Grâce à cette clé, toute nouvelle version s'installe **par-dessus** la
+précédente, sans désinstallation ni perte de réglages.

@@ -13,14 +13,32 @@ android {
         applicationId = "com.digitalsolverland.opencode"
         minSdk = 26
         targetSdk = 28
-        versionCode = 5
-        versionName = "2.2.1"
+        versionCode = 6
+        versionName = "2.2.2"
+    }
+
+    /**
+     * Clé de signature stable, versionnée dans le dépôt : elle garantit que
+     * chaque nouvel APK peut être installé par-dessus le précédent.
+     * (Clé de distribution interne, sans secret : le code est public.)
+     */
+    signingConfigs {
+        create("stable") {
+            storeFile = file("keystore/opencode-release.jks")
+            storePassword = System.getenv("OPENCODE_KEYSTORE_PASSWORD") ?: "opencode-mobile"
+            keyAlias = System.getenv("OPENCODE_KEY_ALIAS") ?: "opencode"
+            keyPassword = System.getenv("OPENCODE_KEY_PASSWORD") ?: "opencode-mobile"
+        }
     }
 
     buildTypes {
+        debug {
+            signingConfig = signingConfigs.getByName("stable")
+        }
         release {
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            signingConfig = signingConfigs.getByName("stable")
         }
     }
 
