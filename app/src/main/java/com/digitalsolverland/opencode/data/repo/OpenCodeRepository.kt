@@ -280,6 +280,7 @@ class OpenCodeRepository {
                 _currentSession.value = (_currentSession.value ?: session).copy(agent = agent)
             }
 
+            val known = _messages.value.map { it.id }.toHashSet()
             val response = requireApi().prompt(
                 session.id,
                 PromptRequest(prompt = PromptInput(text), delivery = "queue"),
@@ -291,7 +292,7 @@ class OpenCodeRepository {
                 return@withContext false
             }
 
-            awaitCompletion(session.id)
+            awaitCompletion(session.id, known)
             loadSessionsSilently()
             true
         } catch (e: Exception) {
@@ -305,11 +306,10 @@ class OpenCodeRepository {
 
     /**
      * Polls the timeline (and the server's session status) until the turn is
-     * over. The server exposes `POST /api/session/{id}/interrupt`, so users
-     * can abort at any point; [interrupt] flips [isWorking] to false and this
-     * loop exits on the next tick.
+     * over. Only messages that did not exist before the prompt are considered,
+     * so a previous finished turn can never end the wait early.
      */
-    private suspend fun awaitCompletion(sessionId: String) {
+    private suspend fun awaitCompletion(sessionId: String, known: Set<String>) {
         val started = System.currentTimeMillis()
         var sawActivity = false
         var idleTicks = 0
@@ -319,42 +319,33 @@ class OpenCodeRepository {
             if (!_isWorking.value) return
             loadMessagesSilently(sessionId)
 
-            val messages = _messages.value
-            val last = messages.lastOrNull()
+            val fresh = _messages.value.filter { it.id !in known }
 
             // Older servers append a terminal `idle` marker to the timeline.
-            if (last?.type == "idle") {
-                _activity.value = null
-                return
-            }
+            if (fresh.any { it.type == "idle" }) return
+
+            // Nothing at all after 90s means the prompt never reached the agent.
+            if (fresh.isEmpty() && System.currentTimeMillis() - started > 90_000) return
 
             val status = activeStatus(sessionId)
-            when {
-                status == "busy" || status == "running" -> {
+            val lastAssistant = fresh.lastOrNull { it.type == "assistant" }
+
+            when (status) {
+                "running", "busy", "retry" -> {
                     sawActivity = true
                     idleTicks = 0
-                    _activity.value = "OpenCode travaille…"
-                }
-                status == "retry" -> {
-                    sawActivity = true
-                    idleTicks = 0
-                    _activity.value = "Nouvelle tentative…"
+                    _activity.value = if (status == "retry") "Nouvelle tentative…" else "OpenCode travaille…"
                 }
                 else -> {
-                    if (sawActivity) {
+                    val finished = lastAssistant?.time?.completed != null
+                    if (sawActivity || finished) {
                         idleTicks++
                         if (idleTicks >= 2) return
                     }
                 }
             }
 
-            val assistant = messages.lastOrNull { it.type == "assistant" }
-            if (assistant?.error != null && assistant.time?.completed != null) return
-
-            // Nothing happened at all after 20s: give up instead of spinning.
-            if (!sawActivity && messages.none { it.type == "assistant" } &&
-                System.currentTimeMillis() - started > 20_000
-            ) return
+            if (lastAssistant?.error != null && lastAssistant.time?.completed != null) return
         }
     }
 
