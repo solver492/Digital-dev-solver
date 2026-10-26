@@ -221,7 +221,6 @@ fun ChatScreen(
     }
 
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
     var pendingAttachments by remember { mutableStateOf<List<PendingAttachment>>(emptyList()) }
     var showAttachMenu by remember { mutableStateOf(false) }
     var cameraUri by remember { mutableStateOf<Uri?>(null) }
