@@ -250,8 +250,11 @@ class OpenCodeRepository {
         text: String,
         model: ModelRef?,
         agent: String?,
+        parts: List<PromptPart>? = null,
     ): Boolean = withContext(Dispatchers.IO) {
         val session = _currentSession.value ?: return@withContext false
+        val trimmed = text.trim()
+        if (trimmed.isEmpty() && parts.isNullOrEmpty()) return@withContext false
         _error.value = null
         _isWorking.value = true
         _activity.value = "Envoi du message…"
@@ -281,9 +284,17 @@ class OpenCodeRepository {
             }
 
             val known = _messages.value.map { it.id }.toHashSet()
+            val requestParts = buildList {
+                if (trimmed.isNotEmpty()) add(PromptPart(type = "text", text = trimmed))
+                if (!parts.isNullOrEmpty()) addAll(parts)
+            }
             val response = requireApi().prompt(
                 session.id,
-                PromptRequest(text = text, delivery = "queue"),
+                PromptRequest(
+                    text = if (requestParts.size == 1 && requestParts[0].type == "text") requestParts[0].text else trimmed.ifEmpty { null },
+                    parts = if (requestParts.isNotEmpty()) requestParts else null,
+                    delivery = "queue",
+                ),
             )
             if (!response.isSuccessful) {
                 _error.value = httpMessage(response, "Envoi refusé")
