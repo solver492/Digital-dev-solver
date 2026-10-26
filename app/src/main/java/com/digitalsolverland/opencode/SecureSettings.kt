@@ -17,6 +17,34 @@ class SecureSettings(context: Context) {
         EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
     )
 
+    /* ------------------------- Server access ------------------------- */
+
+    /** Base URL of `opencode serve`, e.g. http://192.168.1.20:4096 */
+    var serverUrl: String
+        get() = prefs.getString("server_url", "http://127.0.0.1:4096") ?: "http://127.0.0.1:4096"
+        set(v) = prefs.edit().putString("server_url", v).apply()
+
+    /** The token printed by `opencode serve` ("server password ..."). */
+    var serverPassword: String
+        get() = prefs.getString("server_password", "") ?: ""
+        set(v) = prefs.edit().putString("server_password", v).apply()
+
+    /* --------------------------- Selection -------------------------- */
+
+    var defaultProvider: String
+        get() = prefs.getString("default_provider", "") ?: ""
+        set(v) = prefs.edit().putString("default_provider", v).apply()
+
+    var defaultModel: String
+        get() = prefs.getString("default_model", "") ?: ""
+        set(v) = prefs.edit().putString("default_model", v).apply()
+
+    var defaultAgent: String
+        get() = prefs.getString("default_agent", "") ?: ""
+        set(v) = prefs.edit().putString("default_agent", v).apply()
+
+    /* ---------------------- Embedded runtime ------------------------ */
+
     var openAiKey: String
         get() = prefs.getString("openai_key", "") ?: ""
         set(v) = prefs.edit().putString("openai_key", v).apply()
@@ -32,18 +60,6 @@ class SecureSettings(context: Context) {
     var port: Int
         get() = prefs.getInt("port", 4096)
         set(v) = prefs.edit().putInt("port", v).apply()
-
-    var serverUrl: String
-        get() = prefs.getString("server_url", "http://127.0.0.1:4096") ?: "http://127.0.0.1:4096"
-        set(v) = prefs.edit().putString("server_url", v).apply()
-
-    var defaultProvider: String
-        get() = prefs.getString("default_provider", "") ?: ""
-        set(v) = prefs.edit().putString("default_provider", v).apply()
-
-    var defaultModel: String
-        get() = prefs.getString("default_model", "") ?: ""
-        set(v) = prefs.edit().putString("default_model", v).apply()
 
     var entryScript: String
         get() = prefs.getString("entry", "opencode/cli.js") ?: "opencode/cli.js"
@@ -69,10 +85,15 @@ class SecureSettings(context: Context) {
                 if (parts.size == 2 && parts[0].isNotBlank()) parts[0].trim() to parts[1].trim() else null
             }
 
+    fun rememberModel(providerID: String, modelID: String) {
+        defaultProvider = providerID
+        defaultModel = modelID
+    }
+
     companion object {
         const val DEFAULT_ACTIONS =
-            "Lancer un audit::Fais un audit complet du projet courant (sécurité, qualité, perf) et résume les points critiques.\n" +
+            "Audit complet::Fais un audit complet du projet courant (sécurité, qualité, perf) et résume les points critiques.\n" +
             "Générer du code::Génère le code demandé, complet et prêt à l'emploi, sans omettre les imports.\n" +
-            "Vérifier le statut::Donne-moi le statut actuel : tâches en cours, fichiers modifiés, erreurs."
+            "Statut du projet::Donne-moi le statut actuel : tâches en cours, fichiers modifiés, erreurs."
     }
 }

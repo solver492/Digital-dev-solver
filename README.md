@@ -1,54 +1,94 @@
-# OpenCode Mobile — structure du projet
+# OpenCode Mobile
+
+Client Android **natif** (Kotlin + Jetpack Compose) pour [OpenCode](https://opencode.ai).
+Il se connecte en Wi-Fi/LAN (ou via tunnel) à un serveur `opencode serve` et donne accès à
+**toutes** les capacités d'OpenCode depuis le téléphone : sessions, agents, modèles
+(locaux, cloud et gratuits), outils, raisonnement, compaction de contexte.
+
+## Fonctionnalités
+
+- **Sessions** : liste, recherche, création, suppression, reprise de n'importe quelle session du serveur.
+- **Chat complet** : rendu Markdown (blocs de code + bouton copier), raisonnement repliable,
+  appels d'outils avec statut (en attente / en cours / terminé / erreur) et sortie dépliable,
+  compactage de contexte, erreurs du modèle affichées proprement.
+- **Choix du modèle** : feuille de sélection avec recherche, regroupement par fournisseur,
+  badges `GRATUIT`, `RAISONNEMENT`, `OUTILS`, appliqué à la session via l'API.
+- **Choix de l'agent** : liste des agents exposés par le serveur, valeur par défaut incluse.
+- **Streaming par polling** : le client interroge `/api/session/{id}/message` et
+  `/api/session/active` — robuste en veille, en cas de Wi-Fi instable ou de redémarrage du serveur.
+- **Interruption** : bouton stop qui appelle `POST /api/session/{id}/interrupt`.
+- **Connexion sécurisée** : HTTP Basic (`opencode` + mot de passe du serveur), mot de passe
+  stocké chiffré (`EncryptedSharedPreferences`), reconnexion automatique au démarrage.
+- **Actions rapides** personnalisables sur l'écran d'accueil.
+
+## Démarrage
+
+1. Sur l'ordinateur :
+
+   ```bash
+   opencode serve --hostname 0.0.0.0 --port 4096
+   ```
+
+   Notez la ligne affichée : `server password <token>`.
+
+2. Installez l'APK (artifact CI ou `./gradlew assembleDebug`).
+3. Dans l'app → **Connexion** : adresse `http://<ip-locale-de-l-ordi>:4096` + le mot de passe.
+4. C'est tout : vos sessions existantes apparaissent.
+
+> Le username Basic est toujours `opencode` ; seul le mot de passe change à chaque lancement
+> de `opencode serve`.
+
+## Architecture
 
 ```
-OpenCodeMobile/
-├── settings.gradle.kts            (include(":app") + repos google/mavenCentral)
-├── build.gradle.kts               (plugins AGP 8.5+, Kotlin 2.0+, compose compiler plugin)
-└── app/
-    ├── build.gradle.kts
-    └── src/main/
-        ├── AndroidManifest.xml
-        ├── java/com/digitalsolverland/opencode/
-        │   ├── MainActivity.kt
-        │   ├── OpenCodeApp.kt        (Dashboard + Settings)
-        │   ├── OpenCodeService.kt    (Foreground Service)
-        │   ├── AgentBus.kt           (logs + statut partagés)
-        │   ├── SecureSettings.kt     (EncryptedSharedPreferences)
-        │   └── BootReceiver.kt
-        ├── jniLibs/arm64-v8a/
-        │   └── libnode.so            <- binaire Node.js arm64 renommé (voir ci-dessous)
-        └── assets/opencode/
-            ├── cli.js                <- ton entrée JS (bundle OpenCode / wrapper)
-            └── node_modules/ ...     <- dépendances si besoin
+app/src/main/java/com/digitalsolverland/opencode/
+├── OpenCodeApp.kt                  navigation + snackbars
+├── MainActivity.kt
+├── SecureSettings.kt               URL, mot de passe, modèle/agent par défaut (chiffrés)
+├── data/
+│   ├── api/ApiClient.kt            Retrofit dynamique + Basic auth
+│   ├── api/OpenCodeApi.kt          endpoints /api/... (v2)
+│   ├── model/Models.kt             sessions, messages, modèles, agents
+│   └── repo/OpenCodeRepository.kt  état + polling de fin de tour
+├── viewmodel/OpenCodeViewModel.kt  état UI, sélection modèle/agent
+└── ui/
+    ├── components/MarkdownText.kt  rendu Markdown/code
+    ├── screens/SessionsScreen.kt
+    ├── screens/ChatScreen.kt
+    ├── screens/SettingsScreen.kt
+    └── theme/
 ```
 
-## Où placer le binaire et les scripts
+L'ancien service d'exécution d'un Node.js embarqué (`OpenCodeService`, `AgentBus`, `BootReceiver`)
+est conservé mais **n'est pas requis** pour utiliser l'app : le client parle directement à
+`opencode serve`.
 
-**Binaire Node (`libnode.so`)** : Android 10+ interdit d'exécuter un fichier écrit dans
-`filesDir` (règle W^X). Le seul chemin fiable : l'embarquer comme *lib native*.
-1. Récupère un build Node.js **arm64 pour Android** (ex. depuis Termux : `$PREFIX/bin/node`,
-   ou un build `nodejs-mobile`/cross-compilé NDK). Il doit être lié à bionic, pas glibc.
-2. Renomme-le `libnode.so` et place-le dans `app/src/main/jniLibs/arm64-v8a/`.
-3. `useLegacyPackaging = true` + `extractNativeLibs="true"` (déjà configurés) l'extraient dans
-   `applicationInfo.nativeLibraryDir`, d'où le service l'exécute.
-   Si ton Node dépend de libs partagées (libc++_shared, libssl…), ajoute-les aussi en `lib*.so`
-   dans le même dossier.
+## Build
 
-**Scripts / OpenCode** : mets-les dans `app/src/main/assets/opencode/`. Au premier lancement
-(et à chaque nouvelle `versionCode`), le service les copie dans `filesDir/opencode/`.
-Le point d'entrée par défaut est `opencode/cli.js`, modifiable dans Paramètres.
+L'APK est construit automatiquement par GitHub Actions à chaque push sur `main`
+(workflow `.github/workflows/build-apk.yml`) et publié comme artifact
+`OpenCode-Mobile-Debug-APK`.
 
-## Points à connaître
+En local :
 
-- **Commande lancée** : `libnode.so opencode/cli.js serve --hostname 127.0.0.1 --port <PORT>`
-  (modifiable dans Paramètres, `{PORT}` est substitué).
-- **Envoi de prompts** : écrits sur le **stdin** du processus. Si ton agent expose une API HTTP
-  (mode `serve`), remplace `sendToAgent()` par un POST vers `http://127.0.0.1:<PORT>/...`.
-  Le bouton « Vérifier le statut » fait déjà un GET de santé sur la boucle locale.
-- **Clés API** : stockées chiffrées, injectées en variables d'environnement
-  (`OPENAI_API_KEY`, `OPENROUTER_API_KEY`, `ANTHROPIC_API_KEY`) au démarrage du process.
-- **Persistance** : `START_STICKY`, WakeLock partiel, redémarrage auto (5 essais), démarrage au boot optionnel.
-  Sur certains constructeurs (Xiaomi, Huawei…), désactive l'optimisation batterie pour l'app.
-- **Binaire OpenCode natif** : l'officiel est un exécutable Bun compilé (non-Android). Il faut
-  soit la version npm/JS exécutée par Node, soit un build compatible bionic.
-- Les actions rapides se rechargent au redémarrage de l'app après modification.
+```bash
+./gradlew assembleDebug
+# app/build/outputs/apk/debug/app-debug.apk
+```
+
+Prérequis : JDK 17, Android SDK 35.
+
+## API utilisée (OpenCode v2)
+
+| Méthode | Route | Rôle |
+| --- | --- | --- |
+| `GET` | `/api/session` | liste des sessions |
+| `POST` | `/api/session` | création |
+| `DELETE` | `/api/session/{id}` | suppression |
+| `GET` | `/api/session/{id}/message` | historique / polling |
+| `POST` | `/api/session/{id}/prompt` | envoi d'un prompt |
+| `POST` | `/api/session/{id}/interrupt` | stop |
+| `POST` | `/api/session/{id}/model` | changement de modèle |
+| `POST` | `/api/session/{id}/agent` | changement d'agent |
+| `GET` | `/api/session/active` | statut d'exécution |
+| `GET` | `/api/model`, `/api/agent` | catalogues |

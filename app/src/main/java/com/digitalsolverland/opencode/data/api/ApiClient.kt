@@ -1,84 +1,110 @@
 package com.digitalsolverland.opencode.data.api
 
-import android.content.Context
 import com.jakewharton.retrofit2.converter.kotlinx.serialization.asConverterFactory
 import kotlinx.serialization.json.Json
+import okhttp3.Interceptor
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import java.util.concurrent.TimeUnit
 
+/**
+ * Holds the Retrofit instance for one (url, password) pair.
+ *
+ * `opencode serve` protects the API with HTTP Basic auth:
+ *   username = "opencode"
+ *   password = the token printed by `opencode serve`
+ */
 class ApiClient private constructor() {
-    private var retrofit: Retrofit? = null
-    private var api: OpenCodeApi? = null
-    
+
     private val json = Json {
         ignoreUnknownKeys = true
         coerceInputValues = true
         encodeDefaults = true
+        explicitNulls = false
+        isLenient = true
     }
-    
-    fun getApi(baseUrl: String): OpenCodeApi {
-        if (api == null || retrofit == null) {
-            val logging = HttpLoggingInterceptor().apply {
-                level = HttpLoggingInterceptor.Level.BASIC
-            }
-            
-            val client = OkHttpClient.Builder()
-                .connectTimeout(30, TimeUnit.SECONDS)
-                .readTimeout(60, TimeUnit.SECONDS)
-                .writeTimeout(60, TimeUnit.SECONDS)
-                .addInterceptor(logging)
-                .build()
-            
-            val contentType = "application/json".toMediaType()
-            retrofit = Retrofit.Builder()
-                .baseUrl(normalizeBaseUrl(baseUrl))
-                .client(client)
-                .addConverterFactory(json.asConverterFactory(contentType))
-                .build()
-            
-            api = retrofit!!.create(OpenCodeApi::class.java)
-        }
-        return api!!
+
+    @Volatile private var authHeader: String? = null
+    @Volatile private var api: OpenCodeApi? = null
+    @Volatile private var cachedBaseUrl: String? = null
+    @Volatile private var cachedPassword: String? = null
+    @Volatile private var currentBaseUrl: String = ""
+
+    private val authInterceptor = Interceptor { chain ->
+        val builder = chain.request().newBuilder()
+            .header("Accept", "application/json")
+        authHeader?.let { builder.header("Authorization", it) }
+        chain.proceed(builder.build())
     }
-    
-    fun getOkHttpClient(): OkHttpClient {
+
+    private val client: OkHttpClient by lazy {
         val logging = HttpLoggingInterceptor().apply {
             level = HttpLoggingInterceptor.Level.BASIC
         }
-        return OkHttpClient.Builder()
-            .connectTimeout(30, TimeUnit.SECONDS)
-            .readTimeout(0, TimeUnit.SECONDS) // No timeout for SSE
+        OkHttpClient.Builder()
+            .connectTimeout(20, TimeUnit.SECONDS)
+            .readTimeout(180, TimeUnit.SECONDS)
             .writeTimeout(60, TimeUnit.SECONDS)
+            .addInterceptor(authInterceptor)
             .addInterceptor(logging)
             .build()
     }
-    
-    fun reset() {
-        retrofit = null
-        api = null
-    }
-    
-    private fun normalizeBaseUrl(url: String): String {
-        var base = url.trimEnd('/')
-        if (!base.endsWith("/")) base += "/"
-        // Try to detect if it's API v2 path
-        if (!base.contains("/api/") && !base.endsWith(":4096/") && !base.endsWith(":8080/")) {
-            // Keep as is
+
+    fun api(baseUrl: String, password: String): OpenCodeApi {
+        val normalized = normalize(baseUrl)
+        val current = api
+        if (current != null && cachedBaseUrl == normalized && cachedPassword == password) {
+            return current
         }
+        synchronized(this) {
+            if (api != null && cachedBaseUrl == normalized && cachedPassword == password) {
+                return api!!
+            }
+            currentBaseUrl = normalized
+            cachedBaseUrl = normalized
+            cachedPassword = password
+            authHeader = if (password.isBlank()) null else basicAuth(password)
+            val contentType = "application/json".toMediaType()
+            api = Retrofit.Builder()
+                .baseUrl(normalized)
+                .client(client)
+                .addConverterFactory(json.asConverterFactory(contentType))
+                .build()
+                .create(OpenCodeApi::class.java)
+            return api!!
+        }
+    }
+
+    fun baseUrl(): String = currentBaseUrl
+
+    private fun basicAuth(password: String): String {
+        val raw = "opencode:$password"
+        return "Basic " + android.util.Base64.encodeToString(
+            raw.toByteArray(Charsets.UTF_8),
+            android.util.Base64.NO_WRAP
+        )
+    }
+
+    /** Accepts "192.168.1.10:4096", adds http:// and a trailing slash. */
+    fun normalize(url: String): String {
+        var base = url.trim()
+        if (base.isBlank()) base = "http://127.0.0.1:4096"
+        if (!base.startsWith("http://") && !base.startsWith("https://")) {
+            base = "http://$base"
+        }
+        base = base.trimEnd('/')
+        if (!base.endsWith("/")) base += "/"
         return base
     }
-    
+
     companion object {
-        @Volatile
-        private var INSTANCE: ApiClient? = null
-        
-        fun getInstance(): ApiClient {
-            return INSTANCE ?: synchronized(this) {
+        @Volatile private var INSTANCE: ApiClient? = null
+
+        fun getInstance(): ApiClient =
+            INSTANCE ?: synchronized(this) {
                 INSTANCE ?: ApiClient().also { INSTANCE = it }
             }
-        }
     }
 }

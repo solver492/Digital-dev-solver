@@ -2,24 +2,45 @@ package com.digitalsolverland.opencode.data.model
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonElement
+
+/* ------------------------------------------------------------------ *
+ *  OpenCode v2 REST models  (GET/POST /api/...)
+ *  The server wraps every payload in { "data": ... }.
+ * ------------------------------------------------------------------ */
 
 @Serializable
-data class Session(
+data class ModelRef(
     val id: String,
-    val slug: String? = null,
-    val title: String? = null,
-    val projectID: String? = null,
-    val directory: String? = null,
-    val time: SessionTime? = null,
-    val summary: SessionSummary? = null,
-    val share: SessionShare? = null,
-    val revert: SessionRevert? = null,
+    val providerID: String,
+    val variant: String? = null,
 )
 
 @Serializable
 data class SessionTime(
-    val created: Long,
-    val updated: Long,
+    val created: Long = 0L,
+    val updated: Long = 0L,
+    val archived: Long? = null,
+)
+
+@Serializable
+data class LocationRef(
+    val directory: String? = null,
+    val workspaceID: String? = null,
+)
+
+@Serializable
+data class TokenInfo(
+    val input: Long = 0L,
+    val output: Long = 0L,
+    val reasoning: Long = 0L,
+    val cache: CacheInfo? = null,
+)
+
+@Serializable
+data class CacheInfo(
+    val read: Long = 0L,
+    val write: Long = 0L,
 )
 
 @Serializable
@@ -30,235 +51,200 @@ data class SessionSummary(
 )
 
 @Serializable
-data class SessionShare(
-    val url: String,
-)
-
-@Serializable
-data class SessionRevert(
-    val messageID: String,
-    val diff: String? = null,
-)
-
-@Serializable
-data class Message(
+data class SessionInfo(
     val id: String,
-    val sessionID: String,
-    val role: String,
-    val time: MessageTime? = null,
-    val system: String? = null,
-    val model: MessageModel? = null,
+    val title: String = "",
+    val parentID: String? = null,
+    val projectID: String? = null,
     val agent: String? = null,
-    val summary: MessageSummary? = null,
-    val finish: String? = null,
-    val error: MessageError? = null,
-    val metadata: MessageMetadata? = null,
+    val model: ModelRef? = null,
+    val cost: Double = 0.0,
+    val tokens: TokenInfo? = null,
+    val time: SessionTime = SessionTime(),
+    val location: LocationRef? = null,
+    val summary: SessionSummary? = null,
+    val share: ShareInfo? = null,
 )
+
+@Serializable
+data class ShareInfo(val url: String = "")
+
+/* ----------------------------- Messages ---------------------------- */
 
 @Serializable
 data class MessageTime(
-    val created: Long,
+    val created: Long = 0L,
     val completed: Long? = null,
+    val streamed: Long? = null,
 )
 
 @Serializable
-data class MessageModel(
-    val providerID: String,
-    val modelID: String,
-)
-
-@Serializable
-data class MessageSummary(
+data class ToolState(
+    val status: String = "pending",
+    val input: JsonElement? = null,
+    val content: List<ContentPiece> = emptyList(),
+    val output: String? = null,
+    val error: JsonElement? = null,
     val title: String? = null,
-    val diffs: List<Diff>? = null,
 )
 
 @Serializable
-data class Diff(
-    val file: String,
-    val before: String? = null,
-    val after: String? = null,
-    val additions: Int = 0,
-    val deletions: Int = 0,
-)
-
-@Serializable
-data class MessageError(
-    val name: String,
-    val data: ErrorData? = null,
-)
-
-@Serializable
-data class ErrorData(
-    val message: String? = null,
-)
-
-@Serializable
-data class MessageMetadata(
-    val assistant: AssistantMetadata? = null,
-)
-
-@Serializable
-data class AssistantMetadata(
-    val cost: Double = 0.0,
-    val tokens: TokenUsage? = null,
-)
-
-@Serializable
-data class TokenUsage(
-    val input: Int = 0,
-    val output: Int = 0,
-    val reasoning: Int = 0,
-    val cache: CacheUsage? = null,
-)
-
-@Serializable
-data class CacheUsage(
-    val read: Int = 0,
-    val write: Int = 0,
-)
-
-@Serializable
-data class Part(
-    val id: String,
-    val sessionID: String,
-    val messageID: String,
-    val type: String,
+data class ContentPiece(
+    val type: String = "",
     val text: String? = null,
-    val tool: String? = null,
-    val callID: String? = null,
-    val state: PartState? = null,
-    val filename: String? = null,
-    val mime: String? = null,
-    val url: String? = null,
 )
 
 @Serializable
-data class PartState(
-    val status: String? = null,
-    val input: kotlinx.serialization.json.JsonElement? = null,
-    val output: kotlinx.serialization.json.JsonElement? = null,
-    val error: String? = null,
-    val time: PartTime? = null,
+data class MessageContent(
+    val type: String = "",
+    val id: String? = null,
+    val text: String? = null,
+    val name: String? = null,
+    val state: ToolState? = null,
 )
 
 @Serializable
-data class PartTime(
-    val start: Long,
-    val end: Long? = null,
-)
-
-@Serializable
-data class Agent(
-    val name: String,
+data class SessionMessage(
+    val id: String,
+    val type: String = "",
+    val time: MessageTime? = null,
+    /* user */
+    val text: String? = null,
+    /* assistant */
+    val agent: String? = null,
+    val model: ModelRef? = null,
+    val content: List<MessageContent> = emptyList(),
+    val error: JsonElement? = null,
+    val finish: String? = null,
+    val cost: Double = 0.0,
+    val tokens: TokenInfo? = null,
+    /* idle */
+    val outcome: String? = null,
+    /* compaction / synthetic / system */
+    val summary: String? = null,
     val description: String? = null,
-    val mode: String? = null,
-    val builtIn: Boolean = false,
-    val model: AgentModel? = null,
+    /* shell */
+    val command: String? = null,
+    val output: String? = null,
 )
 
-@Serializable
-data class AgentModel(
-    val modelID: String,
-    val providerID: String,
-)
+/* ------------------------- Models / Agents ------------------------- */
 
 @Serializable
-data class Provider(
-    val id: String,
-    val name: String,
-    val source: String? = null,
-    val env: List<String>? = null,
-    val models: Map<String, Model>? = null,
-)
+data class ModelVariant(val id: String = "")
 
 @Serializable
-data class Model(
-    val id: String,
-    val name: String,
-    val release_date: String? = null,
-    val attachment: Boolean = false,
-    val reasoning: Boolean = false,
-    val temperature: Boolean = false,
-    val tool_call: Boolean = false,
-    val cost: ModelCost? = null,
-    val limit: ModelLimit? = null,
+data class ModelLimit(
+    val context: Long = 0L,
+    val input: Long? = null,
+    val output: Long = 0L,
 )
 
 @Serializable
 data class ModelCost(
     val input: Double = 0.0,
     val output: Double = 0.0,
-    val cache_read: Double = 0.0,
-    val cache_write: Double = 0.0,
 )
 
 @Serializable
-data class ModelLimit(
-    val context: Long = 0,
-    val output: Long = 0,
+data class ModelCapabilities(
+    val tools: Boolean = false,
+    val reasoning: Boolean = false,
 )
 
 @Serializable
-data class Config(
-    val model: String? = null,
-    val agent: String? = null,
-    val small_model: String? = null,
+data class ModelInfo(
+    val id: String = "",
+    val modelID: String? = null,
+    val providerID: String = "",
+    val name: String = "",
+    val family: String? = null,
+    val variants: List<ModelVariant> = emptyList(),
+    val capabilities: ModelCapabilities? = null,
+    val limit: ModelLimit? = null,
+    val cost: ModelCost? = null,
+    val status: String = "active",
+    val enabled: Boolean = true,
+) {
+    /** Stable id used by ModelRef. */
+    val refId: String get() = if (id.isNotBlank()) id else (modelID ?: "")
+    val label: String get() = name.ifBlank { refId }
+    val isFree: Boolean get() = (cost?.input ?: 0.0) <= 0.0 && (cost?.output ?: 0.0) <= 0.0
+}
+
+@Serializable
+data class AgentInfo(
+    val id: String = "",
+    val name: String? = null,
+    val description: String? = null,
+    val mode: String? = null,
+    val hidden: Boolean = false,
+    val model: ModelRef? = null,
+) {
+    val label: String get() = name?.takeIf { it.isNotBlank() } ?: id
+}
+
+/* --------------------------- API envelopes ------------------------- */
+
+@Serializable
+data class SessionListResponse(val data: List<SessionInfo> = emptyList())
+
+@Serializable
+data class SessionResponse(val data: SessionInfo)
+
+@Serializable
+data class Cursor(val previous: String? = null, val next: String? = null)
+
+@Serializable
+data class MessagesResponse(
+    val data: List<SessionMessage> = emptyList(),
+    val cursor: Cursor? = null,
 )
 
 @Serializable
-data class Event(
-    val type: String,
-    val properties: kotlinx.serialization.json.JsonElement? = null,
+data class ModelListResponse(val data: List<ModelInfo> = emptyList())
+
+@Serializable
+data class AgentListResponse(val data: List<AgentInfo> = emptyList())
+
+@Serializable
+data class ActiveSessionInfo(
+    val type: String = "idle",
+    val attempt: Int = 0,
+    val message: String? = null,
 )
+
+@Serializable
+data class ActiveSessionsResponse(val data: Map<String, ActiveSessionInfo> = emptyMap())
+
+/* ----------------------------- Requests ---------------------------- */
 
 @Serializable
 data class CreateSessionRequest(
-    val title: String? = null,
-    val parentID: String? = null,
+    val id: String? = null,
+    val agent: String? = null,
+    val model: ModelRef? = null,
 )
+
+@Serializable
+data class PromptInput(val text: String)
 
 @Serializable
 data class PromptRequest(
-    val parts: List<PromptPart>,
-    val model: PromptModel? = null,
-    val agent: String? = null,
-    val system: String? = null,
+    val prompt: PromptInput,
+    val delivery: String = "queue",
+    val resume: Boolean? = null,
 )
 
 @Serializable
-data class PromptPart(
-    val type: String,
-    val text: String? = null,
-    val file: FilePart? = null,
-)
+data class SwitchModelRequest(val model: ModelRef)
 
 @Serializable
-data class FilePart(
-    val mime: String,
-    val url: String,
-    val filename: String? = null,
-)
+data class SwitchAgentRequest(val agent: String)
 
 @Serializable
-data class PromptModel(
-    val providerID: String,
-    val modelID: String,
-)
-
-@Serializable
-data class Todo(
-    val id: String,
-    val content: String,
-    val status: String,
-    val priority: String? = null,
-)
-
-@Serializable
-data class PathInfo(
-    val home: String? = null,
-    val state: String? = null,
-    val config: String? = null,
-    val worktree: String? = null,
-    val directory: String? = null,
+data class PromptAdmitted(
+    val id: String = "",
+    val sessionID: String = "",
+    val admittedSeq: Long = 0L,
 )

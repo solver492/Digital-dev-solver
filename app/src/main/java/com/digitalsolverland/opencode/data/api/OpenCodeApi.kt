@@ -1,104 +1,73 @@
 package com.digitalsolverland.opencode.data.api
 
 import com.digitalsolverland.opencode.data.model.*
-import kotlinx.serialization.json.JsonElement
-import okhttp3.ResponseBody
 import retrofit2.Response
 import retrofit2.http.*
 
+/**
+ * OpenCode v2 HTTP API. Every route lives under /api and is secured with
+ * HTTP Basic auth (user `opencode`).
+ */
 interface OpenCodeApi {
-    // Config & Info
-    @GET("config")
-    suspend fun getConfig(): Response<Config>
-    
-    @GET("path")
-    suspend fun getPath(): Response<PathInfo>
-    
-    // Sessions
-    @GET("session")
-    suspend fun listSessions(): Response<List<Session>>
-    
-    @GET("session/status")
-    suspend fun getSessionStatus(): Response<Map<String, String>>
-    
-    @POST("session")
-    suspend fun createSession(@Body request: CreateSessionRequest): Response<Session>
-    
-    @GET("session/{id}")
-    suspend fun getSession(@Path("id") id: String): Response<Session>
-    
-    @DELETE("session/{id}")
-    suspend fun deleteSession(@Path("id") id: String): Response<Boolean>
-    
-    @PATCH("session/{id}")
-    suspend fun updateSession(@Path("id") id: String, @Body body: Map<String, String>): Response<Session>
-    
-    @POST("session/{id}/share")
-    suspend fun shareSession(@Path("id") id: String): Response<Session>
-    
-    @DELETE("session/{id}/share")
-    suspend fun unshareSession(@Path("id") id: String): Response<Session>
-    
-    @POST("session/{id}/abort")
-    suspend fun abortSession(@Path("id") id: String): Response<Boolean>
-    
-    // Messages
-    @GET("session/{id}/message")
-    suspend fun listMessages(@Path("id") id: String): Response<List<Message>>
-    
-    @GET("session/{id}/message/{messageID}")
-    suspend fun getMessage(@Path("id") id: String, @Path("messageID") messageID: String): Response<Message>
-    
-    @POST("session/{id}/message")
-    suspend fun createMessage(@Path("id") id: String, @Body request: PromptRequest): Response<Message>
-    
-    @POST("session/{id}/prompt")
-    suspend fun prompt(@Path("id") id: String, @Body request: PromptRequest): Response<Message>
-    
-    @POST("session/{id}/prompt_async")
-    suspend fun promptAsync(@Path("id") id: String, @Body request: PromptRequest): Response<Unit>
-    
-    @POST("session/{id}/command")
-    suspend fun command(@Path("id") id: String, @Body body: Map<String, Any>): Response<Message>
-    
-    @POST("session/{id}/shell")
-    suspend fun shell(@Path("id") id: String, @Body body: Map<String, String>): Response<Message>
-    
-    // Parts
-    @GET("session/{id}/message/{messageID}/part")
-    suspend fun listParts(@Path("id") id: String, @Path("messageID") messageID: String): Response<List<Part>>
-    
-    // Agents & Providers
-    @GET("agent")
-    suspend fun listAgents(): Response<List<Agent>>
-    
-    @GET("config/providers")
-    suspend fun listProviders(): Response<ProvidersResponse>
-    
-    @GET("provider")
-    suspend fun getProviders(): Response<ProvidersResponse>
-    
-    // Events (SSE) - handled separately with OkHttp
-    @GET("event")
-    suspend fun getEventStream(): Response<ResponseBody>
-    
-    // TUI
-    @POST("tui/append-prompt")
-    suspend fun appendPrompt(@Body body: Map<String, String>): Response<Boolean>
-    
-    @POST("tui/open-sessions")
-    suspend fun openSessions(): Response<Boolean>
-    
-    @POST("tui/select-session")
-    suspend fun selectSession(@Body body: Map<String, String>): Response<Boolean>
-    
-    // Health
-    @GET("doc")
-    suspend fun getDoc(): Response<JsonElement>
-}
 
-@Serializable
-data class ProvidersResponse(
-    val providers: Map<String, Provider>,
-    val default: Map<String, String>? = null,
-)
+    // ---- Sessions ----------------------------------------------------
+    @GET("api/session")
+    suspend fun listSessions(
+        @Query("limit") limit: Int = 200,
+        @Query("order") order: String = "desc",
+    ): Response<SessionListResponse>
+
+    @POST("api/session")
+    suspend fun createSession(@Body body: CreateSessionRequest): Response<SessionResponse>
+
+    @GET("api/session/{id}")
+    suspend fun getSession(@Path("id") id: String): Response<SessionResponse>
+
+    @DELETE("api/session/{id}")
+    suspend fun deleteSession(@Path("id") id: String): Response<Unit>
+
+    @GET("api/session/active")
+    suspend fun activeSessions(): Response<ActiveSessionsResponse>
+
+    @GET("api/session/{id}/message")
+    suspend fun listMessages(
+        @Path("id") id: String,
+        @Query("limit") limit: Int = 200,
+        @Query("order") order: String = "asc",
+    ): Response<MessagesResponse>
+
+    @POST("api/session/{id}/prompt")
+    suspend fun prompt(
+        @Path("id") id: String,
+        @Body body: PromptRequest,
+    ): Response<PromptAdmitted>
+
+    @POST("api/session/{id}/interrupt")
+    suspend fun interrupt(@Path("id") id: String): Response<Unit>
+
+    @POST("api/session/{id}/model")
+    suspend fun switchModel(
+        @Path("id") id: String,
+        @Body body: SwitchModelRequest,
+    ): Response<Unit>
+
+    @POST("api/session/{id}/agent")
+    suspend fun switchAgent(
+        @Path("id") id: String,
+        @Body body: SwitchAgentRequest,
+    ): Response<Unit>
+
+    @POST("api/session/{id}/compact")
+    suspend fun compact(@Path("id") id: String): Response<Unit>
+
+    // ---- Catalog -----------------------------------------------------
+    @GET("api/model")
+    suspend fun listModels(): Response<ModelListResponse>
+
+    @GET("api/agent")
+    suspend fun listAgents(): Response<AgentListResponse>
+
+    // ---- Health ------------------------------------------------------
+    @GET("api/health")
+    suspend fun health(): Response<okhttp3.ResponseBody>
+}

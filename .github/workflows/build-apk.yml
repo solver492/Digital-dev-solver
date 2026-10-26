@@ -7,9 +7,14 @@ on:
     branches: [ "main", "master" ]
   workflow_dispatch:
 
+concurrency:
+  group: apk-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
 
     steps:
       - name: Checkout repository
@@ -25,8 +30,21 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
+      - name: Show toolchain
+        run: |
+          java -version
+          ./gradlew --version
+
       - name: Build Debug APK
-        run: ./gradlew assembleDebug --no-daemon --stacktrace
+        run: ./gradlew assembleDebug --no-daemon --stacktrace --warning-mode summary
+
+      - name: Collect APK info
+        if: success()
+        run: |
+          ls -lh app/build/outputs/apk/debug/
+          echo "### APK prête 🚀" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Téléchargez l'artifact **OpenCode-Mobile-Debug-APK** ci-dessous, puis installez-la sur Android (autoriser les sources inconnues)." >> $GITHUB_STEP_SUMMARY
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
@@ -35,3 +53,14 @@ jobs:
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 30
+
+      - name: Upload build reports on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-reports
+          path: |
+            app/build/reports/
+            **/build/outputs/logs/
+          if-no-files-found: ignore
+          retention-days: 7
