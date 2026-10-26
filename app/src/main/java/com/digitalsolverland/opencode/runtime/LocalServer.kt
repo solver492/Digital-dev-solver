@@ -1,6 +1,7 @@
 package com.digitalsolverland.opencode.runtime
 
 import android.content.Context
+import android.system.Os
 import android.util.Base64
 import com.digitalsolverland.opencode.AgentBus
 import com.digitalsolverland.opencode.SecureSettings
@@ -131,6 +132,7 @@ object LocalServer {
                 _phase.value = LocalPhase.STARTING
                 _message.value = "Extraction des binaires proot…"
                 extractProotAssets(app)
+                ensureGuestDirs(app)
 
                 val selectedPort = findFreePort(settings(app).localPort)
                 _port.value = selectedPort
@@ -229,6 +231,7 @@ object LocalServer {
             if (!RuntimePaths(app).isInstalled()) return@withContext "Runtime non installé."
             try {
                 extractProotAssets(app)
+                ensureGuestDirs(app)
                 val pw = password(app)
                 val cmd = buildCommand(app, pw, _port.value, listOf(
                     "/bin/bash", "-lc", command,
@@ -305,6 +308,23 @@ object LocalServer {
         )
         cmd += guestCommand
         return cmd
+    }
+
+    /** Points de montage et dossier partagé doivent exister dans le rootfs avant proot. */
+    private fun ensureGuestDirs(context: Context) {
+        val paths = RuntimePaths(context)
+        listOf("root", "root/workspace", "dev", "dev/shm", "tmp", "proc", "sys").forEach { rel ->
+            try {
+                File(paths.rootfs, rel).mkdirs()
+            } catch (_: Exception) {
+            }
+        }
+        try {
+            // /tmp et /dev/shm inscriptibles par tous (comme sur une vraie distribution).
+            Os.chmod(File(paths.rootfs, "tmp").absolutePath, 0b1_111_111_111)
+            Os.chmod(File(paths.rootfs, "dev/shm").absolutePath, 0b1_111_111_111)
+        } catch (_: Exception) {
+        }
     }
 
     private fun extractProotAssets(context: Context) {
