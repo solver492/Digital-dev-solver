@@ -1109,25 +1109,23 @@ private fun ChatComposer(
                 verticalAlignment = Alignment.Bottom,
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                if (!isWorking) {
-                    if (isRecording) {
-                        IconButton(onClick = { stopRecording() }) {
-                            Icon(Icons.Default.StopCircle, contentDescription = "Arrêter l'enregistrement", tint = MaterialTheme.colorScheme.error)
+                if (isRecording) {
+                    IconButton(onClick = { stopRecording() }) {
+                        Icon(Icons.Default.StopCircle, contentDescription = "Arrêter l'enregistrement", tint = MaterialTheme.colorScheme.error)
+                    }
+                } else {
+                    Row {
+                        IconButton(onClick = {
+                            if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+                                startRecording()
+                            } else {
+                                audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                            }
+                        }) {
+                            Icon(Icons.Default.Mic, contentDescription = "Enregistrer un audio")
                         }
-                    } else {
-                        Row {
-                            IconButton(onClick = {
-                                if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
-                                    startRecording()
-                                } else {
-                                    audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
-                                }
-                            }) {
-                                Icon(Icons.Default.Mic, contentDescription = "Enregistrer un audio")
-                            }
-                            IconButton(onClick = onAttachClick) {
-                                Icon(Icons.Default.AttachFile, contentDescription = "Joindre un fichier")
-                            }
+                        IconButton(onClick = onAttachClick) {
+                            Icon(Icons.Default.AttachFile, contentDescription = "Joindre un fichier")
                         }
                     }
                 }
@@ -1150,14 +1148,11 @@ private fun ChatComposer(
                 )
                 if (isWorking) {
                     FilledIconButton(
-                        onClick = onStop,
+                        onClick = onSend,
+                        enabled = value.isNotBlank(),
                         modifier = Modifier.size(48.dp),
-                        colors = IconButtonDefaults.filledIconButtonColors(
-                            containerColor = MaterialTheme.colorScheme.error,
-                            contentColor = MaterialTheme.colorScheme.onError,
-                        ),
                     ) {
-                        Icon(Icons.Default.Stop, contentDescription = "Arrêter")
+                        Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Ajouter à la file")
                     }
                 } else {
                     FilledIconButton(
