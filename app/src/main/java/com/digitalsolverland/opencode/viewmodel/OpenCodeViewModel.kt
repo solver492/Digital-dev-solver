@@ -210,10 +210,22 @@ class OpenCodeViewModel(application: Application) : AndroidViewModel(application
     private fun startRefreshLoop() {
         if (refreshJob?.isActive == true) return
         refreshJob = viewModelScope.launch {
+            var consecutiveIdle = 0
             while (isConnected.value) {
-                kotlinx.coroutines.delay(if (isWorking.value) 4_000L else 15_000L)
+                val delayMs = when {
+                    isWorking.value -> 2_000L
+                    consecutiveIdle < 3 -> 8_000L
+                    consecutiveIdle < 10 -> 15_000L
+                    else -> 30_000L
+                }
+                kotlinx.coroutines.delay(delayMs)
                 if (!isConnected.value) break
-                if (!isWorking.value) repository.loadSessionsSilently()
+                if (!isWorking.value) {
+                    repository.loadSessionsSilently()
+                    consecutiveIdle++
+                } else {
+                    consecutiveIdle = 0
+                }
             }
         }
     }
