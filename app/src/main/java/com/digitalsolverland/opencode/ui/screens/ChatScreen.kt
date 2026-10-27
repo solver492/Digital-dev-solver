@@ -542,7 +542,7 @@ fun ChatScreen(
                     onAttachClick = { showAttachMenu = true },
                     onSend = {
                         val text = inputText.trim()
-                        if ((text.isNotEmpty() || pendingAttachments.isNotEmpty()) && !isWorking) {
+                        if ((text.isNotEmpty() || pendingAttachments.isNotEmpty())) {
                             val parts = pendingAttachments.map { att ->
                                 PromptPart(
                                     type = if (att.mime.startsWith("image/")) "image" else if (att.mime.startsWith("audio/")) "audio" else "file",
@@ -559,6 +559,16 @@ fun ChatScreen(
                         }
                     },
                     onStop = onStop,
+                    isRecording = isRecording,
+                    onRecordStart = {
+                        if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+                            startRecording()
+                        } else {
+                            audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                        }
+                    },
+                    onRecordStop = { stopRecording() },
+                    audioPermissionLauncher = audioPermissionLauncher,
                 )
                 if (showAttachMenu) {
                     ModalBottomSheet(onDismissRequest = { showAttachMenu = false }) {
@@ -1077,6 +1087,10 @@ private fun ChatComposer(
     onAttachClick: () -> Unit = {},
     onSend: () -> Unit,
     onStop: () -> Unit,
+    isRecording: Boolean = false,
+    onRecordStart: () -> Unit = {},
+    onRecordStop: () -> Unit = {},
+    audioPermissionLauncher: androidx.activity.result.ActivityResultLauncher<String>? = null,
 ) {
     Surface(color = MaterialTheme.colorScheme.surface, tonalElevation = 2.dp) {
         Column(
@@ -1110,18 +1124,12 @@ private fun ChatComposer(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 if (isRecording) {
-                    IconButton(onClick = { stopRecording() }) {
+                    IconButton(onClick = onRecordStop) {
                         Icon(Icons.Default.StopCircle, contentDescription = "Arrêter l'enregistrement", tint = MaterialTheme.colorScheme.error)
                     }
                 } else {
                     Row {
-                        IconButton(onClick = {
-                            if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
-                                startRecording()
-                            } else {
-                                audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
-                            }
-                        }) {
+                        IconButton(onClick = onRecordStart) {
                             Icon(Icons.Default.Mic, contentDescription = "Enregistrer un audio")
                         }
                         IconButton(onClick = onAttachClick) {
