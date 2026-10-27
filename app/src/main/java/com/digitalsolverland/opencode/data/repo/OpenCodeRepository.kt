@@ -484,7 +484,7 @@ class OpenCodeRepository {
     }
 
     companion object {
-        private const val POLL_MS = 1_000L
+        private const val POLL_MS = 800L
         private const val MAX_TURN_MS = 20 * 60 * 1000L
     }
 }
