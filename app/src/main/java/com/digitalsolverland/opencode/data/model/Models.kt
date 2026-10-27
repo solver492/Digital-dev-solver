@@ -114,6 +114,7 @@ data class SessionMessage(
     val agent: String? = null,
     val model: ModelRef? = null,
     val content: List<MessageContent> = emptyList(),
+    val parts: List<MessageContent>? = null,
     val error: JsonElement? = null,
     val finish: String? = null,
     val cost: Double = 0.0,
@@ -126,7 +127,9 @@ data class SessionMessage(
     /* shell */
     val command: String? = null,
     val output: String? = null,
-)
+) { 
+    val allContent: List<MessageContent> get() = content + (parts.orEmpty())
+}
 
 /* ------------------------- Models / Agents ------------------------- */
 
