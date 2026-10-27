@@ -323,7 +323,7 @@ class OpenCodeRepository {
                     _activity.value = null
                     _isWorking.value = false
                     processQueue()
-                    return false
+                    return@sendPromptNow false
                 }
                 _currentSession.value = session.copy(model = queued.model)
             }
@@ -335,7 +335,7 @@ class OpenCodeRepository {
                     _activity.value = null
                     _isWorking.value = false
                     processQueue()
-                    return false
+                    return@sendPromptNow false
                 }
                 _currentSession.value = (_currentSession.value ?: current).copy(agent = queued.agent)
             }
@@ -358,17 +358,17 @@ class OpenCodeRepository {
                 _activity.value = null
                 _isWorking.value = false
                 processQueue()
-                return false
+                return@sendPromptNow false
             }
 
             awaitCompletion(session.id, known)
             loadSessionsSilently()
             processQueue()
-            true
+            return@sendPromptNow true
         } catch (e: Exception) {
             _error.value = "Envoi impossible : ${e.message}"
             processQueue()
-            false
+            return@sendPromptNow false
         } finally {
             _isWorking.value = false
             _activity.value = null
