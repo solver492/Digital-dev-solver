@@ -7,8 +7,17 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import retrofit2.Response
+
+private data class QueuedPrompt(
+    val text: String,
+    val model: ModelRef?,
+    val agent: String?,
+    val parts: List<PromptPart>?,
+)
 
 /**
  * Single source of truth for the OpenCode v2 server state.
@@ -55,6 +64,10 @@ class OpenCodeRepository {
 
     private val _sessionsLoading = MutableStateFlow(false)
     val sessionsLoading: StateFlow<Boolean> = _sessionsLoading
+
+    private val promptQueue = mutableListOf<QueuedPrompt>()
+    private val queueMutex = Mutex()
+    @Volatile private var isProcessingQueue = false
 
     fun init(baseUrl: String, password: String) {
         api = apiClient.api(baseUrl, password)
@@ -256,42 +269,86 @@ class OpenCodeRepository {
         val trimmed = text.trim()
         if (trimmed.isEmpty() && parts.isNullOrEmpty()) return@withContext false
         _error.value = null
+
+        queueMutex.withLock {
+            promptQueue.add(
+                QueuedPrompt(
+                    text = trimmed,
+                    model = model,
+                    agent = agent,
+                    parts = parts,
+                ),
+            )
+            _activity.value = if (promptQueue.size == 1 && !_isWorking.value) "Envoi du message…" else "Message ajouté à la file (${promptQueue.size})"
+        }
+        processQueue()
+        true
+    }
+
+    private suspend fun processQueue() {
+        if (isProcessingQueue) return
+        isProcessingQueue = true
+        try {
+            while (true) {
+                val next = queueMutex.withLock {
+                    if (promptQueue.isEmpty()) null else promptQueue.removeAt(0)
+                } ?: break
+                val session = _currentSession.value ?: break
+                if (_isWorking.value) {
+                    queueMutex.withLock {
+                        promptQueue.add(0, next)
+                    }
+                    break
+                }
+                sendPromptNow(session, next)
+                if (queueMutex.withLock { promptQueue.isEmpty() }) break
+            }
+        } finally {
+            isProcessingQueue = false
+        }
+    }
+
+    private suspend fun sendPromptNow(session: SessionInfo, queued: QueuedPrompt): Boolean {
+        _error.value = null
         _isWorking.value = true
         _activity.value = "Envoi du message…"
         try {
             // Apply the selected model/agent to the session before prompting.
-            if (model != null && (session.model?.id != model.id ||
-                        session.model?.providerID != model.providerID)
+            if (queued.model != null && (session.model?.id != queued.model.id ||
+                        session.model?.providerID != queued.model.providerID)
             ) {
-                val r = requireApi().switchModel(session.id, SwitchModelRequest(model))
+                val r = requireApi().switchModel(session.id, SwitchModelRequest(queued.model))
                 if (!r.isSuccessful) {
                     _error.value = httpMessage(r, "Modèle non disponible")
                     _activity.value = null
                     _isWorking.value = false
-                    return@withContext false
+                    processQueue()
+                    return false
                 }
-                _currentSession.value = session.copy(model = model)
+                _currentSession.value = session.copy(model = queued.model)
             }
-            if (!agent.isNullOrBlank() && session.agent != agent) {
-                val r = requireApi().switchAgent(session.id, SwitchAgentRequest(agent))
+            val current = _currentSession.value ?: session
+            if (!queued.agent.isNullOrBlank() && current.agent != queued.agent) {
+                val r = requireApi().switchAgent(session.id, SwitchAgentRequest(queued.agent))
                 if (!r.isSuccessful) {
                     _error.value = httpMessage(r, "Agent non disponible")
                     _activity.value = null
                     _isWorking.value = false
-                    return@withContext false
+                    processQueue()
+                    return false
                 }
-                _currentSession.value = (_currentSession.value ?: session).copy(agent = agent)
+                _currentSession.value = (_currentSession.value ?: current).copy(agent = queued.agent)
             }
 
             val known = _messages.value.map { it.id }.toHashSet()
             val requestParts = buildList {
-                if (trimmed.isNotEmpty()) add(PromptPart(type = "text", text = trimmed))
-                if (!parts.isNullOrEmpty()) addAll(parts)
+                if (queued.text.isNotEmpty()) add(PromptPart(type = "text", text = queued.text))
+                if (!queued.parts.isNullOrEmpty()) addAll(queued.parts)
             }
             val response = requireApi().prompt(
                 session.id,
                 PromptRequest(
-                    text = if (requestParts.size == 1 && requestParts[0].type == "text") requestParts[0].text else trimmed.ifEmpty { null },
+                    text = if (requestParts.size == 1 && requestParts[0].type == "text") requestParts[0].text else queued.text.ifEmpty { null },
                     parts = if (requestParts.isNotEmpty()) requestParts else null,
                     delivery = "queue",
                 ),
@@ -300,14 +357,17 @@ class OpenCodeRepository {
                 _error.value = httpMessage(response, "Envoi refusé")
                 _activity.value = null
                 _isWorking.value = false
-                return@withContext false
+                processQueue()
+                return false
             }
 
             awaitCompletion(session.id, known)
             loadSessionsSilently()
+            processQueue()
             true
         } catch (e: Exception) {
             _error.value = "Envoi impossible : ${e.message}"
+            processQueue()
             false
         } finally {
             _isWorking.value = false
@@ -393,6 +453,9 @@ class OpenCodeRepository {
         try {
             requireApi().interrupt(session.id)
         } catch (_: Exception) {
+        }
+        queueMutex.withLock {
+            promptQueue.clear()
         }
     }
 
