@@ -446,13 +446,15 @@ class OpenCodeRepository {
     }
 
     suspend fun interrupt() = withContext(Dispatchers.IO) {
-        val session = _currentSession.value ?: return@withContext
+        val session = _currentSession.value
         // Stop polling immediately for a snappy UI, then tell the server.
         _isWorking.value = false
         _activity.value = null
-        try {
-            requireApi().interrupt(session.id)
-        } catch (_: Exception) {
+        if (session != null) {
+            try {
+                requireApi().interrupt(session.id)
+            } catch (_: Exception) {
+            }
         }
         queueMutex.withLock {
             promptQueue.clear()
