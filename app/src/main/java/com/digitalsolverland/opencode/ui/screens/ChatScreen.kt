@@ -1,13 +1,12 @@
 package com.digitalsolverland.opencode.ui.screens
 
 import android.Manifest
-import android.content.Context
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.media.MediaRecorder
 import android.net.Uri
 import android.os.Build
-import android.provider.MediaStore
 import android.util.Base64
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -45,12 +44,14 @@ import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SmartToy
 import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.filled.StopCircle
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -69,6 +70,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
+import coil.compose.AsyncImage
 import com.digitalsolverland.opencode.data.model.AgentInfo
 import com.digitalsolverland.opencode.data.model.MessageContent
 import com.digitalsolverland.opencode.data.model.ModelInfo
@@ -92,10 +94,21 @@ import java.util.Locale
 
 /* --------------------------- Chat entries -------------------------- */
 
+private data class UserAttachment(
+    val type: String,
+    val url: String?,
+    val mime: String?,
+    val text: String?,
+)
+
 private sealed interface ChatEntry {
     val key: String
 
-    data class User(override val key: String, val text: String) : ChatEntry
+    data class User(
+        override val key: String,
+        val text: String,
+        val attachments: List<UserAttachment> = emptyList(),
+    ) : ChatEntry
 
     data class Assistant(
         override val key: String,
@@ -113,7 +126,34 @@ private fun buildEntries(messages: List<SessionMessage>): List<ChatEntry> {
         when (message.type) {
             "user" -> {
                 val text = message.text.orEmpty()
-                if (text.isNotBlank()) entries += ChatEntry.User(message.id, text)
+                val attachments = mutableListOf<UserAttachment>()
+                (message.allContent).forEach { content ->
+                    val ctext = content.text
+                    if (!ctext.isNullOrBlank() && ctext.startsWith("data:")) {
+                        val mime = ctext.substringAfter("data:").substringBefore(";")
+                        attachments += UserAttachment(
+                            type = when {
+                                ctext.startsWith("data:image") -> "image"
+                                ctext.startsWith("data:audio") -> "audio"
+                                content.type == "image" -> "image"
+                                content.type == "audio" -> "audio"
+                                else -> "file"
+                            },
+                            url = ctext,
+                            mime = mime,
+                            text = null,
+                        )
+                    } else if (content.type == "image" && !ctext.isNullOrBlank()) {
+                        attachments += UserAttachment(type = "image", url = ctext, mime = null, text = null)
+                    } else if (content.type == "audio" && !ctext.isNullOrBlank()) {
+                        attachments += UserAttachment(type = "audio", url = ctext, mime = null, text = null)
+                    } else if (content.type == "file" && !ctext.isNullOrBlank()) {
+                        attachments += UserAttachment(type = "file", url = ctext, mime = null, text = null)
+                    }
+                }
+                if (text.isNotBlank() || attachments.isNotEmpty()) {
+                    entries += ChatEntry.User(message.id, text, attachments)
+                }
             }
             "assistant" -> {
                 val previous = entries.lastOrNull() as? ChatEntry.Assistant
@@ -224,6 +264,9 @@ fun ChatScreen(
     var pendingAttachments by remember { mutableStateOf<List<PendingAttachment>>(emptyList()) }
     var showAttachMenu by remember { mutableStateOf(false) }
     var cameraUri by remember { mutableStateOf<Uri?>(null) }
+    var isRecording by remember { mutableStateOf(false) }
+    var recorder by remember { mutableStateOf<MediaRecorder?>(null) }
+    var recordingFile by remember { mutableStateOf<File?>(null) }
 
     fun readUri(uri: Uri): PendingAttachment? {
         return try {
@@ -254,6 +297,77 @@ fun ChatScreen(
         }
     }
 
+    fun readFile(file: File, mime: String): PendingAttachment? {
+        return try {
+            val bytes = file.readBytes()
+            val preview = if (mime.startsWith("image/")) {
+                runCatching {
+                    val opts = BitmapFactory.Options().apply { inSampleSize = 2 }
+                    BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts)
+                }.getOrNull()
+            } else null
+            PendingAttachment(
+                uri = Uri.fromFile(file),
+                name = file.name,
+                mime = mime,
+                data = Base64.encodeToString(bytes, Base64.NO_WRAP),
+                preview = preview,
+            )
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    fun startRecording() {
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            return
+        }
+        try {
+            val timeStamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
+            val file = File(context.cacheDir, "AUD_${timeStamp}.m4a")
+            recordingFile = file
+            val r = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                MediaRecorder(context)
+            } else {
+                @Suppress("DEPRECATION")
+                MediaRecorder()
+            }
+            recorder = r
+            r.setAudioSource(MediaRecorder.AudioSource.MIC)
+            r.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
+            r.setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
+            r.setAudioEncodingBitRate(128000)
+            r.setAudioSamplingRate(44100)
+            r.setOutputFile(file.absolutePath)
+            r.prepare()
+            r.start()
+            isRecording = true
+        } catch (_: Exception) {
+            recorder?.release()
+            recorder = null
+            isRecording = false
+        }
+    }
+
+    fun stopRecording() {
+        try {
+            recorder?.apply {
+                stop()
+                release()
+            }
+        } catch (_: Exception) {
+        }
+        recorder = null
+        isRecording = false
+        val file = recordingFile
+        if (file != null && file.exists()) {
+            readFile(file, "audio/mp4")?.let { att ->
+                pendingAttachments = pendingAttachments + att
+            }
+        }
+        recordingFile = null
+    }
+
     val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) {
             readUri(uri)?.let { att ->
@@ -280,6 +394,11 @@ fun ChatScreen(
             readUri(cameraUri!!)?.let { att ->
                 pendingAttachments = pendingAttachments + att
             }
+        }
+    }
+    val audioPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted && !isRecording) {
+            startRecording()
         }
     }
 
@@ -476,7 +595,19 @@ fun ChatScreen(
                                 },
                             )
                             ListItem(
-                                headlineContent = { Text("Audio") },
+                                headlineContent = { Text("Enregistrer un audio (micro)") },
+                                leadingContent = { Icon(Icons.Default.Mic, null) },
+                                modifier = Modifier.clickable {
+                                    showAttachMenu = false
+                                    if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+                                        startRecording()
+                                    } else {
+                                        audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                                    }
+                                },
+                            )
+                            ListItem(
+                                headlineContent = { Text("Fichier audio depuis l'appareil") },
                                 leadingContent = { Icon(Icons.Default.MusicNote, null) },
                                 modifier = Modifier.clickable {
                                     showAttachMenu = false
@@ -511,7 +642,7 @@ fun ChatScreen(
             ) {
                 items(entries, key = { it.key }) { entry ->
                     when (entry) {
-                        is ChatEntry.User -> UserBubble(entry.text)
+                        is ChatEntry.User -> UserBubble(entry.text, entry.attachments)
                         is ChatEntry.Assistant -> AssistantBlock(entry)
                         is ChatEntry.Notice -> NoticeChip(entry.text)
                     }
@@ -550,22 +681,74 @@ fun ChatScreen(
 /* ----------------------------- Bubbles ----------------------------- */
 
 @Composable
-private fun UserBubble(text: String) {
+private fun UserBubble(text: String, attachments: List<UserAttachment> = emptyList()) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.End,
     ) {
-        Surface(
-            color = MaterialTheme.colorScheme.primary,
-            shape = RoundedCornerShape(18.dp, 18.dp, 4.dp, 18.dp),
+        Column(
             modifier = Modifier.widthIn(max = 330.dp),
+            horizontalAlignment = Alignment.End,
+            verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            Text(
-                text = text,
-                modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-                color = MaterialTheme.colorScheme.onPrimary,
-                style = MaterialTheme.typography.bodyMedium.copy(lineHeight = 20.sp),
-            )
+            if (attachments.isNotEmpty()) {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp), horizontalAlignment = Alignment.End) {
+                    attachments.forEach { att ->
+                        if (att.type == "image" && att.url != null) {
+                            AsyncImage(
+                                model = att.url,
+                                contentDescription = null,
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(14.dp))
+                                    .fillMaxWidth(0.9f)
+                                    .heightIn(max = 240.dp),
+                                contentScale = ContentScale.Crop,
+                            )
+                        } else if (att.type == "audio" && att.url != null) {
+                            Surface(
+                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.9f),
+                                shape = RoundedCornerShape(14.dp),
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                ) {
+                                    Icon(Icons.Default.MusicNote, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimary)
+                                    Text("Audio joint", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onPrimary)
+                                }
+                            }
+                        } else if (att.url != null) {
+                            Surface(
+                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.9f),
+                                shape = RoundedCornerShape(14.dp),
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                ) {
+                                    Icon(Icons.Default.AttachFile, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimary)
+                                    Text("Fichier joint", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onPrimary)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            if (text.isNotBlank()) {
+                Surface(
+                    color = MaterialTheme.colorScheme.primary,
+                    shape = RoundedCornerShape(18.dp, 18.dp, 4.dp, 18.dp),
+                ) {
+                    Text(
+                        text = text,
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                        color = MaterialTheme.colorScheme.onPrimary,
+                        style = MaterialTheme.typography.bodyMedium.copy(lineHeight = 20.sp),
+                    )
+                }
+            }
         }
     }
 }
@@ -927,8 +1110,25 @@ private fun ChatComposer(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 if (!isWorking) {
-                    IconButton(onClick = onAttachClick) {
-                        Icon(Icons.Default.AttachFile, contentDescription = "Joindre un fichier")
+                    if (isRecording) {
+                        IconButton(onClick = { stopRecording() }) {
+                            Icon(Icons.Default.StopCircle, contentDescription = "Arrêter l'enregistrement", tint = MaterialTheme.colorScheme.error)
+                        }
+                    } else {
+                        Row {
+                            IconButton(onClick = {
+                                if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+                                    startRecording()
+                                } else {
+                                    audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                                }
+                            }) {
+                                Icon(Icons.Default.Mic, contentDescription = "Enregistrer un audio")
+                            }
+                            IconButton(onClick = onAttachClick) {
+                                Icon(Icons.Default.AttachFile, contentDescription = "Joindre un fichier")
+                            }
+                        }
                     }
                 }
                 OutlinedTextField(
