@@ -387,16 +387,16 @@ class OpenCodeRepository {
 
         while (_isWorking.value && System.currentTimeMillis() - started < MAX_TURN_MS) {
             delay(POLL_MS)
-            if (!_isWorking.value) return
+            if (!_isWorking.value) break
             loadMessagesSilently(sessionId)
 
             val fresh = _messages.value.filter { it.id !in known }
 
             // Older servers append a terminal `idle` marker to the timeline.
-            if (fresh.any { it.type == "idle" }) return
+            if (fresh.any { it.type == "idle" }) break
 
             // Nothing at all after 90s means the prompt never reached the agent.
-            if (fresh.isEmpty() && System.currentTimeMillis() - started > 90_000) return
+            if (fresh.isEmpty() && System.currentTimeMillis() - started > 90_000) break
 
             val status = activeStatus(sessionId)
             val lastAssistant = fresh.lastOrNull { it.type == "assistant" }
@@ -411,12 +411,12 @@ class OpenCodeRepository {
                     val finished = lastAssistant?.time?.completed != null
                     if (sawActivity || finished) {
                         idleTicks++
-                        if (idleTicks >= 2) return
+                        if (idleTicks >= 2) break
                     }
                 }
             }
 
-            if (lastAssistant?.error != null && lastAssistant.time?.completed != null) return
+            if (lastAssistant?.error != null && lastAssistant.time?.completed != null) break
         }
     }
 
